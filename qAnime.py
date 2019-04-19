@@ -65,7 +65,7 @@ def is_process_running(process):
             pass
     return False
             
-def renameTorrent(hash, save_path, subpath, old_filename, new_filename):
+def renameTorrent(hash, save_path, subpath, old_filename, new_filename, tor_files):
     """
     Renames a torrent and manipulates the QBittorrent fastresume files accordingly.
     qbittorrent.exe will be terminated while this function is being executed and will be restarted afterwards.
@@ -73,8 +73,9 @@ def renameTorrent(hash, save_path, subpath, old_filename, new_filename):
     :param str hash: QBittorrent's torrent hash
     :param str save_path: The torrent save path
     :param str subpath: path of subfolders inside save_path
-    :param str old_filename: The current filename.
-    :param str new_filename: The new filename.
+    :param str old_filename: The current filename
+    :param str new_filename: The new filename
+    :param list(str) tor_files: list of relative filenames of torrent
     """
     
     os.system("taskkill /im  {}".format(qbt_client.split('\\')[-1]))
@@ -95,6 +96,7 @@ def renameTorrent(hash, save_path, subpath, old_filename, new_filename):
         with open(file, 'rb') as f:
             fastresume = f.read()
 
+        old_filename_relative = bytes('\\'.join(filter(None, [subpath, old_filename])), 'utf-8')
         new_filename_relative = bytes('\\'.join(filter(None, [subpath, new_filename])), 'utf-8')
 
         qbttag_files = b"12:mapped_filesl"
@@ -103,17 +105,31 @@ def renameTorrent(hash, save_path, subpath, old_filename, new_filename):
         qbttag_queue_position = b"17:qBt-queuePosition"
         new_filename_relative_length = bytes(str(len(new_filename_relative)), "ascii")
             
+        
+        #build byte string of file list 
+        tor_files_string = b""
+        for tor_file in tor_files:
+            print(tor_file)
+            tor_file_b = bytes(tor_file, 'utf-8')
+            if tor_file_b == old_filename_relative:
+                tor_file_b = new_filename_relative
+            tor_files_string = tor_files_string + bytes(str(len(tor_file_b)), "ascii") + b':' + tor_file_b
         #insert file name
         idx = fastresume.find(qbttag_files)
+        idx2 = fastresume.index(qbttag_max_connections)
         if idx is -1:
-            idx = fastresume.index(qbttag_max_connections)
-            fastresume = fastresume[:idx] + qbttag_files + new_filename_relative_length + b':' + new_filename_relative + b'e' + fastresume[idx:]
+            fastresume = fastresume[:idx2] + qbttag_files + tor_files_string + b'e' + fastresume[idx2:]
+        else:
+            fastresume = fastresume[:idx] + qbttag_files + tor_files_string + b'e' + fastresume[idx2:]
             
-        #insert torrent name
-        idx = fastresume.index(qbttag_name)
-        idx = idx + len(qbttag_name)
-        next_idx = fastresume.index(qbttag_queue_position, idx)
-        fastresume = fastresume[:idx] + new_filename_relative_length + b':' + new_filename_relative + fastresume[next_idx:]
+        #insert new filename as torrent name unless it's a batch torrent
+        if len(tor_files) == 1:
+            print(len(tor_files))
+            print(tor_files)
+            idx = fastresume.index(qbttag_name)
+            idx = idx + len(qbttag_name)
+            next_idx = fastresume.index(qbttag_queue_position, idx)
+            fastresume = fastresume[:idx] + new_filename_relative_length + b':' + new_filename_relative + fastresume[next_idx:]
 
         try:
             os.rename('\\'.join(filter(None, [save_path, subpath, old_filename])), '\\'.join(filter(None, [save_path, subpath, new_filename])))
@@ -291,20 +307,22 @@ def main():
             #check all files by regex in our series data
             for hash, file_data in contents.items():
                 save_path = file_data[0]
+                tor_files = []
+                for file in file_data[1]:
+                    print("Appending " + file['name'])
+                    tor_files.append(file['name'])   #list of all filenames in torrent used for fastresume manipulation, needed for batch torrents
                 for file in file_data[1]:
                     if file['priority'] == 0:   #skip ignored files
                         continue
                     filename_split = file['name'].split('\\')
-                    subpath = '\\'.join(filename_split[:-1])
+                    subpath = '\\'.join(filename_split[:-1])    #is empty string if no subpath
                     filename = filename_split[-1]
-                    #absolute = list(filter(None, [save_path, '\\'.join(filename_split[:-1]), filename]))  #save path by qbt; subfolders; filename
                     for tvdb_id, data in series_data.items():
                         pattern = re.compile(data['patternA'])
                         if pattern.match(filename):
-                            response = input("\nRename this? (y/n)\n{}\nWarning: Don't rename files in batch torrents! Torrent will be corrupted.\n>> ".format('\\'.join(absolute)))
+                            response = input("\nRename this? (y/n)\n{}\n>> ".format('\\'.join(filter(None, [save_path, subpath, filename]))))
                             if response.lower() == "y":
-                                #renameTorrent(hash, absolute, patternWizard(tvdb_id, data, filename))
-                                renameTorrent(hash, save_path, subpath, filename, patternWizard(tvdb_id, data, filename))
+                                renameTorrent(hash, save_path, subpath, filename, patternWizard(tvdb_id, data, filename), tor_files)
         elif job == 2:
             series_data = metadata_wizard(-1, series_data)
         elif job == 3:
