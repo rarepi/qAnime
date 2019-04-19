@@ -40,12 +40,8 @@ def fetchTorrentContent(hash):
     save_path = json_properties['save_path']
 
     if type(json_files) is list:
-        item_list = []
         files = {}
-        for item in json_files:
-            if item['priority'] != 0:   #ignore ignored files
-                item_list.append(item['name'])
-        files[hash] = (save_path, item_list)
+        files[hash] = (save_path, json_files)
     
     return files
 
@@ -69,15 +65,16 @@ def is_process_running(process):
             pass
     return False
             
-    
-def renameTorrent(hash, absolute, new_filename):
+def renameTorrent(hash, save_path, subpath, old_filename, new_filename):
     """
     Renames a torrent and manipulates the QBittorrent fastresume files accordingly.
     qbittorrent.exe will be terminated while this function is being executed and will be restarted afterwards.
     
     :param str hash: QBittorrent's torrent hash
-    :param list(str) absolute: List of 2 or 3 strings that can be joined by \"\\\" to build the current absolute file path. First element is the torrent save path, second a path of subfolders, third the current filename. Subpath is optional. Might as well make it 3 parameters, but I'm too lazy to change it rn.
-    :param str new_filename: The new filename. (no path)
+    :param str save_path: The torrent save path
+    :param str subpath: path of subfolders inside save_path
+    :param str old_filename: The current filename.
+    :param str new_filename: The new filename.
     """
     
     os.system("taskkill /im  {}".format(qbt_client.split('\\')[-1]))
@@ -93,20 +90,12 @@ def renameTorrent(hash, absolute, new_filename):
     print("\n")
 
     while True:
-        old_filename = absolute[-1]
         file = "C:/Users/Shiki/AppData/Local/qBittorrent/BT_backup/" + hash + ".fastresume"
         new_filename = clean_filename(new_filename)
         with open(file, 'rb') as f:
             fastresume = f.read()
 
-        if len(absolute) == 3:
-            #old_filename_relative = bytes('\\'.join(absolute[1:]), 'utf-8')
-            new_filename_relative = bytes('\\'.join(absolute[1:-1]) + '\\' + new_filename, 'utf-8')
-        elif len(absolute) == 2:
-            #old_filename_relative = bytes(old_filename, 'utf-8')
-            new_filename_relative = bytes(new_filename, 'utf-8')
-        else:
-            print("Invalid absolute?\n" + str(absolute))
+        new_filename_relative = bytes('\\'.join(filter(None, [subpath, new_filename])), 'utf-8')
 
         qbttag_files = b"12:mapped_filesl"
         qbttag_name = b"8:qBt-name"
@@ -127,11 +116,11 @@ def renameTorrent(hash, absolute, new_filename):
         fastresume = fastresume[:idx] + new_filename_relative_length + b':' + new_filename_relative + fastresume[next_idx:]
 
         try:
-            os.rename('\\'.join(absolute), '\\'.join(absolute[:-1]) + '\\' + new_filename)
+            os.rename('\\'.join(filter(None, [save_path, subpath, old_filename])), '\\'.join(filter(None, [save_path, subpath, new_filename])))
             print(f"Renamed {old_filename} to {new_filename}.")
         except OSError as e:
             print(e.strerror)
-            print('\\'.join(absolute))
+            print('\\'.join(filter(None, [save_path, subpath, old_filename])))
             print("File renaming failed. No changes are being made.")
             break
         try:
@@ -142,7 +131,7 @@ def renameTorrent(hash, absolute, new_filename):
             print(e.strerror)
             print("Failed to manipulate QBittorrent files. Reverting file rename...")
             try:
-                os.rename('\\'.join(absolute[:-1]) + '\\' + new_filename, '\\'.join(absolute))
+                os.rename('\\'.join(filter(None, [save_path, subpath, new_filename])), '\\'.join(filter(None, [save_path, subpath, old_filename])))
                 print("File renaming reverted.")
             except OSError as e:
                 print(e.strerror)
@@ -303,15 +292,19 @@ def main():
             for hash, file_data in contents.items():
                 save_path = file_data[0]
                 for file in file_data[1]:
-                    filename_split = file.split('\\')
+                    if file['priority'] == 0:   #skip ignored files
+                        continue
+                    filename_split = file['name'].split('\\')
+                    subpath = '\\'.join(filename_split[:-1])
                     filename = filename_split[-1]
-                    absolute = list(filter(None, [save_path, '\\'.join(filename_split[:-1]), filename]))  #save path by qbt; subfolders; filename
+                    #absolute = list(filter(None, [save_path, '\\'.join(filename_split[:-1]), filename]))  #save path by qbt; subfolders; filename
                     for tvdb_id, data in series_data.items():
                         pattern = re.compile(data['patternA'])
                         if pattern.match(filename):
                             response = input("\nRename this? (y/n)\n{}\nWarning: Don't rename files in batch torrents! Torrent will be corrupted.\n>> ".format('\\'.join(absolute)))
                             if response.lower() == "y":
-                                renameTorrent(hash, absolute, patternWizard(tvdb_id, data, filename))
+                                #renameTorrent(hash, absolute, patternWizard(tvdb_id, data, filename))
+                                renameTorrent(hash, save_path, subpath, filename, patternWizard(tvdb_id, data, filename))
         elif job == 2:
             series_data = metadata_wizard(-1, series_data)
         elif job == 3:
