@@ -1,8 +1,6 @@
 import requests
 import json
 import os
-import sys
-import errno
 import re #regex
 import psutil
 import time
@@ -45,7 +43,7 @@ def fetchTorrentContent(hash):
         item_list = []
         files = {}
         for item in json_files:
-            if item['priority'] is not 0:   #ignore ignored files
+            if item['priority'] != 0:   #ignore ignored files
                 item_list.append(item['name'])
         files[hash] = (save_path, item_list)
     
@@ -101,11 +99,11 @@ def renameTorrent(hash, absolute, new_filename):
         with open(file, 'rb') as f:
             fastresume = f.read()
 
-        if len(absolute) is 3:
-            old_filename_relative = bytes('\\'.join(absolute[1:]), 'utf-8')
+        if len(absolute) == 3:
+            #old_filename_relative = bytes('\\'.join(absolute[1:]), 'utf-8')
             new_filename_relative = bytes('\\'.join(absolute[1:-1]) + '\\' + new_filename, 'utf-8')
-        elif len(absolute) is 2:
-            old_filename_relative = bytes(old_filename, 'utf-8')
+        elif len(absolute) == 2:
+            #old_filename_relative = bytes(old_filename, 'utf-8')
             new_filename_relative = bytes(new_filename, 'utf-8')
         else:
             print("Invalid absolute?\n" + str(absolute))
@@ -159,7 +157,7 @@ def tvdb_auth():
     auth = {"apikey" : "2323B61F3A9DA8C8", "username" : "elpingu42", "userkey" : "52EB4C6A3C24B288"}
 
     result = requests.post(url_tvdb + '/login', json=auth)
-    if result.status_code is not 200:
+    if result.status_code != 200:
         print('TVDB AUTHENTICATION FAILED')
         print('TVDB Auth Response Status Code: ', result.status_code)
         print('TVDB Auth Response: ', result.text)
@@ -170,7 +168,7 @@ def tvdb_getSeriesId(name):
     head = {"Authorization" : "Bearer " + tvdb_auth, "Accept-Language" : "en", "content-type" : "application/json"}
     data = {'name': name}
     result = requests.get(url_tvdb + '/search/series', headers = head, params = data)
-    if result.status_code is not 200:
+    if result.status_code != 200:
         print('TVDB Series Fetch Response Status Code: ', result.status_code)
         print('TVDB Series Fetch Response: ', result.text)
         return
@@ -191,7 +189,7 @@ def tvdb_getSingleEpisode(tvdb_id, absoluteNumber):
     head = {"Authorization" : "Bearer " + tvdb_auth, "Accept-Language" : "en", "content-type" : "application/json"}
     data = {'absoluteNumber': absoluteNumber}
     result = requests.get(url_tvdb + '/series/' + tvdb_id + '/episodes/query', headers = head, params = data)
-    if result.status_code is not 200:
+    if result.status_code != 200:
         print('TVDB Episode Fetch Response Status Code: ', result.status_code)
         print('TVDB Episode Fetch Response: ', result.text)
         return
@@ -260,7 +258,6 @@ def patternWizard(tvdb_id, sdata, filename):
             patternB = patternReplace(patternB, "\A", absoluteNumber, True)
         while "\T" in patternB:
             patternB = patternReplace(patternB, "\T", title, False)
-        print("\nFinal Result: " + patternB)
         return patternB
 
 def main():
@@ -287,14 +284,14 @@ def main():
             "0) Exit\n")
         job = int(input("What to do?\n>> "))
 
-        if job is 0:
+        if job == 0:
             break
-        elif job is 1:
+        elif job == 1:
             torrents = fetchTorrents()
             hashes = []
             contents = {}
             
-            if type(torrents) is list:
+            if type(torrents) == list:
                 for item in torrents:
                     hashes.append(item['hash'])
                     
@@ -315,9 +312,9 @@ def main():
                             response = input("\nRename this? (y/n)\n{}\nWarning: Don't rename files in batch torrents! Torrent will be corrupted.\n>> ".format('\\'.join(absolute)))
                             if response.lower() == "y":
                                 renameTorrent(hash, absolute, patternWizard(tvdb_id, data, filename))
-        elif job is 2:
+        elif job == 2:
             series_data = metadata_wizard(-1, series_data)
-        elif job is 3:
+        elif job == 3:
             series_options = {}
             i = 0
             for key, value in series_data.items():
@@ -326,7 +323,7 @@ def main():
                 i+=1
             index = int(input("Choose the correct series by index.\n>> "))    #TODO: Evaluate int
             series_data = metadata_wizard(series_options[index], series_data)
-        elif job is 4:
+        elif job == 4:
             series_options = {}
             i = 0
             for key, value in series_data.items():
