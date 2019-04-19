@@ -6,7 +6,6 @@ import psutil
 import time
 
 #TODO:
-#!!! fix batch torrent support !!!
 #Input Evaluations
 #Check QBittorrent version on startup to avoid fastresume corruption
 #Allow multiple patterns per series
