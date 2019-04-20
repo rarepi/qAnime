@@ -7,19 +7,20 @@ import time
 
 #TODO:
 #Input Evaluations
-#Check QBittorrent version on startup to avoid fastresume corruption
 #Allow multiple patterns per series
 #Ask user if episode number is seasonal or absolute
 #Use tvdb name inside json, not user input
 #
 
 qbt_client = "C:\\Program Files\\qBittorrent\\qbittorrent.exe"
+qbt_version = "v4.1.5"
 url_qbt = 'http://localhost:8080/api/v2'
 url_tvdb = 'https://api.thetvdb.com'
 log = "log/log.txt"
 series_data_file = "./data.json"
 os.makedirs(os.path.dirname(log), exist_ok=True)
 os.makedirs(os.path.dirname(series_data_file), exist_ok=True)
+
 
 def clean_filename(filename):
     illegal_characters = '\\"/:<>?'
@@ -30,6 +31,10 @@ def qbt_auth():
     global qbt_cookie
     auth = {'username': 'shiki', 'password': 'omegalul'}
     qbt_cookie = requests.get(url_qbt + '/auth/login', params=auth)
+    
+def get_qbt_version():
+    version = requests.get(url_qbt + '/app/version', cookies=qbt_cookie.cookies)
+    return version.text
     
 def fetchTorrentContent(hash):
     options = {'hash': hash}
@@ -248,6 +253,12 @@ def patternWizard(tvdb_id, sdata, filename):
 def main():
     tvdb_auth()
     qbt_auth()
+    
+    qbt_version_cur = get_qbt_version()
+    if qbt_version != qbt_version_cur:
+        if input("WARNING: QBittorrent version mismatch: Got \"{}\", expected \"{}\". Compatibility is not ensured. \nContinue? (y/n)".format(qbt_version_cur, qbt_version)) != 'y':
+            print("Exiting.")
+            return
     try:
         with open(series_data_file, 'r') as f:
             series_data = json.load(f)
@@ -270,6 +281,7 @@ def main():
         job = int(input("What to do?\n>> "))
 
         if job == 0:
+            print("Exiting.")
             break
         elif job == 1:
             torrents = fetchTorrents()
