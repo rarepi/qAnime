@@ -7,9 +7,6 @@ import time
 
 #TODO:
 #Input Evaluations
-#Allow multiple patterns per series
-#Ask user if episode number is seasonal or absolute
-#Use tvdb name inside json, not user input
 #
 
 qbt_client = "C:\\Program Files\\qBittorrent\\qbittorrent.exe"
@@ -154,14 +151,14 @@ def tvdb_auth():
     else:
         tvdb_auth = result.json()['token']
 
-def tvdb_getSeriesId(name):
+def tvdb_getSeries(name):
     head = {"Authorization" : "Bearer " + tvdb_auth, "Accept-Language" : "en", "content-type" : "application/json"}
     data = {'name': name}
     result = requests.get(url_tvdb + '/search/series', headers = head, params = data)
     if result.status_code != 200:
         print('TVDB Series Fetch Response Status Code: ', result.status_code)
         print('TVDB Series Fetch Response: ', result.text)
-        return
+        return {}
     json_data = result.json()
     if type(json_data) is dict:
         series_options = {}
@@ -173,11 +170,14 @@ def tvdb_getSeriesId(name):
         index = int(input("Choose the correct series by index.\n>> "))    #TODO: Evaluate int
         print("You picked \"" + series_options[index][1] + "\". TheTVDB ID is " + series_options[index][0] + ".")
         
-        return series_options[index][0]
+        return series_options[index]
 
-def tvdb_getSingleEpisode(tvdb_id, absoluteNumber):
+def tvdb_getSingleEpisode(tvdb_id, season, episodeNumber):
     head = {"Authorization" : "Bearer " + tvdb_auth, "Accept-Language" : "en", "content-type" : "application/json"}
-    data = {'absoluteNumber': absoluteNumber}
+    if season == "-1":
+        data = {'absoluteNumber': episodeNumber}
+    else:
+        data = {'airedSeason': season, 'airedEpisodeNumber': episodeNumber}
     result = requests.get(url_tvdb + '/series/' + tvdb_id + '/episodes/query', headers = head, params = data)
     if result.status_code != 200:
         print('TVDB Episode Fetch Response Status Code: ', result.status_code)
@@ -187,33 +187,51 @@ def tvdb_getSingleEpisode(tvdb_id, absoluteNumber):
     #print(json.dumps(json_data, indent=4, sort_keys=True))
     return json_data
         
-def metadata_wizard(tvdb_id, series_data):
+def metadata_wizard(id, series_data):
     x_name = "Mob Psycho 100"
     x_patternA = r"^\[HorribleSubs\] Mob Psycho 100 - (\d\d) \[720p\]\.mkv"
     x_patternB = "Mob Psycho 100 - s\S\Se\E\E - [\A\A] \T - [2019 ENG-Sub AAC 720p HDTV x264 - HorribleSubs].mkv"
     
+    sdata = {}
     #add new entry
-    if tvdb_id is -1:
+    if id is -1:
         name = input("Enter the name of the series.\nExample: " + x_name + "\n>> ")
-        tvdb_id = tvdb_getSeriesId(name)
+        tvdb_series = tvdb_getSeries(name)
+        id = tvdb_series[0]
+        name = tvdb_series[1]
         
-        
-        if tvdb_id in series_data.keys():
-            print("Error: Series ID " + tvdb_id + " already has an entry.")
-            return
+        if id in series_data.keys():
+            if input("Series ID " + id + " already has an entry named \"" + series_data[id]['name'] + "\". Add new pattern? (y/n)\n>> ") != 'y':
+                return
+            sdata = series_data[id]
+        else:
+            sdata = {
+                "name" : name,
+                "patterns" : {
+                }
+                }
     #edit existing entry
     else:
-        name = series_data[tvdb_id]['name']
+        sdata = series_data[id]
+        
+        pattern_set_options = {}
+        i = 0
+        for item in sdata['patterns']:
+            pattern_set_options[i] = item
+            print(str(i) + ") " + pattern_set_options[i][0] + " RENAMES TO " + pattern_set_options[i][1])
+            i+=1
+        index = int(input("Choose the pattern set you want to replace by index.\n>> "))    #TODO: Evaluate int
+        print("Pattern set \"" + sdata['patterns'].pop(index) + "\" has been removed.")
     
-    patternA = input("Enter unique regex for detection. Provide a capture group for the absolute episode number. (e. g. (\d\d))\nExample: " + x_patternA + "\n>> ")
+    patternA = input("Enter unique regex for detection. Provide a capture group for the episode number. (e. g. (\d\d))\nExample: " + x_patternA + "\n>> ")
     patternB = input("Enter target file name.\nExample: " + x_patternB + "\nValid tags:\n\S - Season Number\n\E - Seasonal Episode Number\n\A - Absolute Episode Number\n\T - Season Title\n>> ")
-    sdata = {
-        "name" : name,
-        "patternA" : patternA,
-        "patternB" : patternB
-        }
-
-    series_data[tvdb_id] = sdata
+    if input("Are episode numbers for this pattern set given per season? (y = per season; n = absolute)\n>> ") == 'y':
+        season = input("Enter the season number for this pattern set.\nExample: 2\n>> ")
+    else:
+        season = "-1"
+    
+    sdata['patterns'] = {season : {patternA : patternB}}
+    series_data[id] = sdata
     return series_data
     
 def patternReplace(pattern, old, new, fill=False):
@@ -230,25 +248,26 @@ def patternReplace(pattern, old, new, fill=False):
         pattern = pattern[:idx] + new + pattern[idx+len(old)*count:]
     return pattern
     
-def patternWizard(tvdb_id, sdata, filename):
-    pattern = re.compile(sdata['patternA'])
+def patternWizard(tvdb_id, season, patternA, patternB, filename):
+    pattern = re.compile(patternA)
     if pattern.match(filename):
-        absoluteNumber = re.search(sdata['patternA'], filename).group(1)
-        episode_json_data = tvdb_getSingleEpisode(tvdb_id, absoluteNumber)
+        episodeNumber = re.search(patternA, filename).group(1)
+        episode_json_data = tvdb_getSingleEpisode(tvdb_id, season, episodeNumber)
         seasonNumber = episode_json_data['airedSeason']
         episodeNumber = episode_json_data['airedEpisodeNumber']
+        absoluteNumber = episode_json_data['absoluteNumber']
         title = episode_json_data['episodeName']
+        filename_new = patternB
         
-        patternB = sdata['patternB']
-        while "\S" in patternB:
-            patternB = patternReplace(patternB, "\S", seasonNumber, True)
-        while "\E" in patternB:
-            patternB = patternReplace(patternB, "\E", episodeNumber, True)
-        while "\A" in patternB:
-            patternB = patternReplace(patternB, "\A", absoluteNumber, True)
-        while "\T" in patternB:
-            patternB = patternReplace(patternB, "\T", title, False)
-        return patternB
+        while "\S" in filename_new:
+            filename_new = patternReplace(filename_new, "\S", seasonNumber, True)
+        while "\E" in filename_new:
+            filename_new = patternReplace(filename_new, "\E", episodeNumber, True)
+        while "\A" in filename_new:
+            filename_new = patternReplace(filename_new, "\A", absoluteNumber, True)
+        while "\T" in filename_new:
+            filename_new = patternReplace(filename_new, "\T", title, False)
+        return filename_new
 
 def main():
     tvdb_auth()
@@ -324,15 +343,17 @@ def main():
                     subpath = '\\'.join(filename_split[:-1])    #is empty string if no subpath
                     filename = filename_split[-1]
                     for tvdb_id, data in series_data.items():
-                        pattern = re.compile(data['patternA'])
-                        if pattern.match(filename):
-                            response = input("\nRename this? (y/n)\n{}\n>> ".format('\\'.join(filter(None, [save_path, subpath, filename])))) if not renameWholeBatch else 'y'
-                            if response.lower() == 'y':
-                                if not renameWholeBatch and len(tor_files) > 1 and input("\nTry to rename whole batch? (y/n)\n>> ") == 'y':
-                                    renameWholeBatch = True
-                                filename_new = patternWizard(tvdb_id, data, filename)
-                                tor_files = [tor_file.replace('\\'.join(filter(None, [subpath, filename])), '\\'.join(filter(None, [subpath, filename_new]))) for tor_file in tor_files]
-                                renameTorrent(hash, save_path, subpath, filename, filename_new, tor_files)
+                        for season, patterns in data.items():
+                            for patternA, patternB in patterns.items():
+                                pattern = re.compile(patternA)
+                                if pattern.match(filename):
+                                    response = input("\nRename this? (y/n)\n{}\n>> ".format('\\'.join(filter(None, [save_path, subpath, filename])))) if not renameWholeBatch else 'y'
+                                    if response.lower() == 'y':
+                                        if not renameWholeBatch and len(tor_files) > 1 and input("\nTry to rename whole batch? (y/n)\n>> ") == 'y':
+                                            renameWholeBatch = True
+                                        filename_new = patternWizard(tvdb_id, season, patternA, patternB, filename)
+                                        tor_files = [tor_file.replace('\\'.join(filter(None, [subpath, filename])), '\\'.join(filter(None, [subpath, filename_new]))) for tor_file in tor_files]
+                                        renameTorrent(hash, save_path, subpath, filename, filename_new, tor_files)
             print("Restarting QBittorrent...")
             os.startfile(qbt_client)
             qbt_auth()
