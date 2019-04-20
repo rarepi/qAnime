@@ -7,6 +7,7 @@ import time
 
 #TODO:
 #Input Evaluations
+#remove by pattern in series, not just by series
 #
 
 qbt_client = "C:\\Program Files\\qBittorrent\\qbittorrent.exe"
@@ -233,7 +234,7 @@ def metadata_wizard(id, series_data):
     else:
         season = "-1"
     
-    sdata['patterns'][season] = {patternA : patternB}
+    sdata['patterns'][season] = {**sdata['patterns'][season], **{patternA : patternB}}
     series_data[id] = sdata
     return series_data
     
@@ -327,8 +328,8 @@ def main():
                 if timer >= 60:
                     print("Error: Failed to terminate QBittorrent after 60 seconds.")
                     return
-                print(f"Waiting for QBittorrent to exit... ({timer}s)", end='\r')
-            print("\n")
+                print(f"Waiting for QBittorrent to terminate... ({timer}s)", end='\r')
+            print("\nQBittorrent has been terminated.")
                 
             #check all files by regex in our series data
             for hash, file_data in contents.items():
@@ -350,9 +351,9 @@ def main():
                             for patternA, patternB in patterns.items():
                                 pattern = re.compile(patternA)
                                 if pattern.match(filename):
-                                    response = input("\nRename this? (y/n)\n{}\n>> ".format('\\'.join(filter(None, [save_path, subpath, filename])))) if not renameWholeBatch else 'y'
+                                    response = input("Rename this? (y/n)\n{}\n>> ".format('\\'.join(filter(None, [save_path, subpath, filename])))) if not renameWholeBatch else 'y'
                                     if response.lower() == 'y':
-                                        if not renameWholeBatch and len(tor_files) > 1 and input("\nTry to rename whole batch? (y/n)\n>> ") == 'y':
+                                        if not renameWholeBatch and len(tor_files) > 1 and input("Try to rename whole batch? (y/n)\n>> ") == 'y':
                                             renameWholeBatch = True
                                         filename_new = patternWizard(tvdb_id, season, patternA, patternB, filename)
                                         tor_files = [tor_file.replace('\\'.join(filter(None, [subpath, filename])), '\\'.join(filter(None, [subpath, filename_new]))) for tor_file in tor_files]
