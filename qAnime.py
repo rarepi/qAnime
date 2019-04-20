@@ -9,6 +9,8 @@ import time
 #Input Evaluations
 #Check QBittorrent version on startup to avoid fastresume corruption
 #Allow multiple patterns per series
+#Ask user if episode number is seasonal or absolute
+#Use tvdb name inside json, not user input
 #
 
 qbt_client = "C:\\Program Files\\qBittorrent\\qbittorrent.exe"
@@ -25,15 +27,15 @@ def clean_filename(filename):
     return filename.translate(rem_ill_chars)
 
 def qbt_auth():
-    global qbt_auth
+    global qbt_cookie
     auth = {'username': 'shiki', 'password': 'omegalul'}
-    qbt_auth = requests.get(url_qbt + '/auth/login', params=auth)
+    qbt_cookie = requests.get(url_qbt + '/auth/login', params=auth)
     
 def fetchTorrentContent(hash):
     options = {'hash': hash}
-    result_files = requests.get(url_qbt + '/torrents/files', cookies=qbt_auth.cookies, params=options)
+    result_files = requests.get(url_qbt + '/torrents/files', cookies=qbt_cookie.cookies, params=options)
     json_files = result_files.json()
-    result_properties = requests.get(url_qbt + '/torrents/properties', cookies=qbt_auth.cookies, params=options)
+    result_properties = requests.get(url_qbt + '/torrents/properties', cookies=qbt_cookie.cookies, params=options)
     json_properties = result_properties.json()
     
     save_path = json_properties['save_path']
@@ -46,7 +48,7 @@ def fetchTorrentContent(hash):
 
 def fetchTorrents():
     options = {'sort': 'name'}
-    result = requests.get(url_qbt + '/torrents/info', cookies=qbt_auth.cookies, params=options)
+    result = requests.get(url_qbt + '/torrents/info', cookies=qbt_cookie.cookies, params=options)
     json_data = result.json()
     
     json_dump = json.dumps(json_data, indent=4, sort_keys=True)
@@ -67,7 +69,6 @@ def is_process_running(process):
 def renameTorrent(hash, save_path, subpath, old_filename, new_filename, tor_files):
     """
     Renames a torrent and manipulates the QBittorrent fastresume files accordingly.
-    qbittorrent.exe will be terminated while this function is being executed and will be restarted afterwards.
     
     :param str hash: QBittorrent's torrent hash
     :param str save_path: The torrent save path
@@ -76,18 +77,6 @@ def renameTorrent(hash, save_path, subpath, old_filename, new_filename, tor_file
     :param str new_filename: The new filename
     :param list(str) tor_files: list of relative filenames of torrent
     """
-    
-    os.system("taskkill /im  {}".format(qbt_client.split('\\')[-1]))
-    
-    timer = 0
-    while is_process_running(qbt_client):
-        time.sleep(1)
-        timer+=1
-        if timer >= 60:
-            print("Error: Failed to terminate QBittorrent after 60 seconds.")
-            return
-        print(f"Waiting for QBittorrent to exit... ({timer}s)", end='\r')
-    print("\n")
 
     while True:
         file = "C:/Users/Shiki/AppData/Local/qBittorrent/BT_backup/" + hash + ".fastresume"
@@ -95,7 +84,6 @@ def renameTorrent(hash, save_path, subpath, old_filename, new_filename, tor_file
         with open(file, 'rb') as f:
             fastresume = f.read()
 
-        old_filename_relative = bytes('\\'.join(filter(None, [subpath, old_filename])), 'utf-8')
         new_filename_relative = bytes('\\'.join(filter(None, [subpath, new_filename])), 'utf-8')
 
         qbttag_files = b"12:mapped_filesl"
@@ -108,10 +96,7 @@ def renameTorrent(hash, save_path, subpath, old_filename, new_filename, tor_file
         #build byte string of file list 
         tor_files_string = b""
         for tor_file in tor_files:
-            print(tor_file)
             tor_file_b = bytes(tor_file, 'utf-8')
-            if tor_file_b == old_filename_relative:
-                tor_file_b = new_filename_relative
             tor_files_string = tor_files_string + bytes(str(len(tor_file_b)), "ascii") + b':' + tor_file_b
         #insert file name
         idx = fastresume.find(qbttag_files)
@@ -123,8 +108,6 @@ def renameTorrent(hash, save_path, subpath, old_filename, new_filename, tor_file
             
         #insert new filename as torrent name unless it's a batch torrent
         if len(tor_files) == 1:
-            print(len(tor_files))
-            print(tor_files)
             idx = fastresume.index(qbttag_name)
             idx = idx + len(qbttag_name)
             next_idx = fastresume.index(qbttag_queue_position, idx)
@@ -153,8 +136,6 @@ def renameTorrent(hash, save_path, subpath, old_filename, new_filename, tor_file
                 print("Failed to revert renaming of file.")
                 break
         break
-        
-    os.startfile(qbt_client);
 
 def tvdb_auth():
     global tvdb_auth
@@ -303,12 +284,24 @@ def main():
             for item in hashes:
                 tc = fetchTorrentContent(item)
                 contents = {**contents, **tc}
+    
+            os.system("taskkill /im  {}".format(qbt_client.split('\\')[-1]))
+            timer = 0
+            while is_process_running(qbt_client):
+                time.sleep(1)
+                timer+=1
+                if timer >= 60:
+                    print("Error: Failed to terminate QBittorrent after 60 seconds.")
+                    return
+                print(f"Waiting for QBittorrent to exit... ({timer}s)", end='\r')
+            print("\n")
+                
             #check all files by regex in our series data
             for hash, file_data in contents.items():
                 save_path = file_data[0]
                 tor_files = []
+                renameWholeBatch = False
                 for file in file_data[1]:
-                    print("Appending " + file['name'])
                     tor_files.append(file['name'])   #list of all filenames in torrent used for fastresume manipulation, needed for batch torrents
                 for file in file_data[1]:
                     if file['priority'] == 0:   #skip ignored files
@@ -319,9 +312,16 @@ def main():
                     for tvdb_id, data in series_data.items():
                         pattern = re.compile(data['patternA'])
                         if pattern.match(filename):
-                            response = input("\nRename this? (y/n)\n{}\n>> ".format('\\'.join(filter(None, [save_path, subpath, filename]))))
-                            if response.lower() == "y":
-                                renameTorrent(hash, save_path, subpath, filename, patternWizard(tvdb_id, data, filename), tor_files)
+                            response = input("\nRename this? (y/n)\n{}\n>> ".format('\\'.join(filter(None, [save_path, subpath, filename])))) if not renameWholeBatch else 'y'
+                            if response.lower() == 'y':
+                                if not renameWholeBatch and len(tor_files) > 1 and input("\nTry to rename whole batch? (y/n)\n>> ") == 'y':
+                                    renameWholeBatch = True
+                                filename_new = patternWizard(tvdb_id, data, filename)
+                                tor_files = [tor_file.replace('\\'.join(filter(None, [subpath, filename])), '\\'.join(filter(None, [subpath, filename_new]))) for tor_file in tor_files]
+                                renameTorrent(hash, save_path, subpath, filename, filename_new, tor_files)
+            print("Restarting QBittorrent...")
+            os.startfile(qbt_client)
+            qbt_auth()
         elif job == 2:
             series_data = metadata_wizard(-1, series_data)
         elif job == 3:
