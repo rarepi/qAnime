@@ -174,18 +174,21 @@ def tvdb_getSeries(name):
 
 def tvdb_getSingleEpisode(tvdb_id, season, episodeNumber):
     head = {"Authorization" : "Bearer " + tvdb_auth, "Accept-Language" : "en", "content-type" : "application/json"}
+    data = {}
     if season == "-1":
         data = {'absoluteNumber': episodeNumber}
     else:
-        data = {'airedSeason': season, 'airedEpisodeNumber': episodeNumber}
+        data = {'airedSeason': season, 'airedEpisodeNumber': episodeNumber.lstrip('0')}
     result = requests.get(url_tvdb + '/series/' + tvdb_id + '/episodes/query', headers = head, params = data)
     if result.status_code != 200:
         print('TVDB Episode Fetch Response Status Code: ', result.status_code)
         print('TVDB Episode Fetch Response: ', result.text)
         return
-    json_data = result.json()['data'][0]
-    #print(json.dumps(json_data, indent=4, sort_keys=True))
-    return json_data
+        
+    for item in result.json()['data']:
+        if (season != "-1" and item['airedEpisodeNumber'] == int(episodeNumber) and item['airedSeason'] == int(season) 
+            or season == "-1" and item['absoluteNumber'] == int(episodeNumber)):
+            return item
         
 def metadata_wizard(id, series_data):
     x_name = "Mob Psycho 100"
@@ -343,7 +346,7 @@ def main():
                     subpath = '\\'.join(filename_split[:-1])    #is empty string if no subpath
                     filename = filename_split[-1]
                     for tvdb_id, data in series_data.items():
-                        for season, patterns in data.items():
+                        for season, patterns in data['patterns'].items():
                             for patternA, patternB in patterns.items():
                                 pattern = re.compile(patternA)
                                 if pattern.match(filename):
