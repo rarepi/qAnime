@@ -311,6 +311,8 @@ def main():
             #check all files by regex in our series data
             for hash, file_data in contents.items():
                 save_path = file_data[0]
+                if save_path[-1] == '\\':           #remove trailing backslash for tidy string joins
+                    save_path = save_path[:-1]
                 tor_files = []
                 renameWholeBatch = False
                 for file in file_data[1]:
