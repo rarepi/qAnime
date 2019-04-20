@@ -230,7 +230,7 @@ def metadata_wizard(id, series_data):
     else:
         season = "-1"
     
-    sdata['patterns'] = {season : {patternA : patternB}}
+    sdata['patterns'][season] = {patternA : patternB}
     series_data[id] = sdata
     return series_data
     
@@ -387,5 +387,4 @@ def main():
         with open(series_data_file, 'w') as f:
             dump = json.dumps(series_data, indent=4, sort_keys=True)
             f.write(dump)
-            
 main()
