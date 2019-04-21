@@ -1,2 +1,6 @@
 log
 data.json
+build
+__pycache__
+*.exe
+*.bat

@@ -8,7 +8,6 @@ import time
 #TODO:
 #Input Evaluations
 #remove by pattern in series, not just by series
-#
 
 qbt_client = "C:\\Program Files\\qBittorrent\\qbittorrent.exe"
 qbt_version = "v4.1.5"
@@ -234,7 +233,7 @@ def metadata_wizard(id, series_data):
     else:
         season = "-1"
     
-    sdata['patterns'][season] = {**sdata['patterns'][season], **{patternA : patternB}}
+    sdata['patterns'] = {**sdata['patterns'], **{season:{patternA : patternB}}}
     series_data[id] = sdata
     return series_data
     
