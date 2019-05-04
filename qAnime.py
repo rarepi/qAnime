@@ -27,7 +27,11 @@ def clean_filename(filename):
 def qbt_auth():
     global qbt_cookie
     auth = {'username': 'shiki', 'password': 'omegalul'}
-    qbt_cookie = requests.get(url_qbt + '/auth/login', params=auth)
+    try:
+        qbt_cookie = requests.get(url_qbt + '/auth/login', params=auth)
+    except requests.exceptions.ConnectionError as e:
+        print("Failed connecting to QBittorrent WebAPI. Make sure QBittorrent is running and its Web UI is enabled.")
+        exit()
     
 def get_qbt_version():
     version = requests.get(url_qbt + '/app/version', cookies=qbt_cookie.cookies)
@@ -80,7 +84,7 @@ def renameTorrent(hash, save_path, subpath, old_filename, new_filename, tor_file
     :param list(str) tor_files: list of relative filenames of torrent
     """
 
-    while True:
+    while True: #using break in exceptions - why not return though? gotta take a closer look at this later on
         file = "C:/Users/Shiki/AppData/Local/qBittorrent/BT_backup/" + hash + ".fastresume"
         new_filename = clean_filename(new_filename)
         with open(file, 'rb') as f:
@@ -270,7 +274,7 @@ def patternWizard(tvdb_id, season, patternA, patternB, filename):
             filename_new = patternReplace(filename_new, "\A", absoluteNumber, True)
         while "\T" in filename_new:
             filename_new = patternReplace(filename_new, "\T", title, False)
-        return filename_new
+        return clean_filename(filename_new)
 
 def main():
     tvdb_auth()
