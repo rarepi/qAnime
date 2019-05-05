@@ -8,6 +8,7 @@ import time
 #TODO:
 #Input Evaluations
 #remove by pattern in series, not just by series
+#fix entry editing
 
 qbt_client = "C:\\Program Files\\qBittorrent\\qbittorrent.exe"
 qbt_version = "v4.1.5"
@@ -171,8 +172,14 @@ def tvdb_getSeries(name):
             series_options[i] = (str(item['id']), item['seriesName'])
             print(str(i) + ") " + series_options[i][1] + " (" + item['network'] + ")")
             i+=1
-        index = int(input("Choose the correct series by index.\n>> "))    #TODO: Evaluate int
-        print("You picked \"" + series_options[index][1] + "\". TheTVDB ID is " + series_options[index][0] + ".")
+            while True:
+                index = numericInput("Choose the correct series by index.\n>> ")    #TODO: Evaluate int
+                try:
+                    print("You picked \"" + series_options[index][1] + "\". TheTVDB ID is " + series_options[index][0] + ".")
+                except KeyError as e:
+                    print("Invalid input.")
+                    continue
+                break
         
         return series_options[index]
 
@@ -227,13 +234,25 @@ def metadata_wizard(id, series_data):
             pattern_set_options[i] = item
             print(str(i) + ") " + pattern_set_options[i][0] + " RENAMES TO " + pattern_set_options[i][1])
             i+=1
-        index = int(input("Choose the pattern set you want to replace by index.\n>> "))    #TODO: Evaluate int
+        index = numericInput("Choose the pattern set you want to replace by index.\n>> ")    #TODO: Evaluate int
         print("Pattern set \"" + sdata['patterns'].pop(index) + "\" has been removed.")
-    
-    patternA = input("Enter unique regex for detection. Provide a capture group for the episode number. (e. g. (\d\d))\nExample: " + x_patternA + "\n>> ")
-    patternB = input("Enter target file name.\nExample: " + x_patternB + "\nValid tags:\n\S - Season Number\n\E - Seasonal Episode Number\n\A - Absolute Episode Number\n\T - Season Title\n>> ")
-    if input("Are episode numbers for this pattern set given per season? (y = per season; n = absolute)\n>> ") == 'y':
-        season = input("Enter the season number for this pattern set.\nExample: 2\n>> ")
+
+    ep_patternA = re.compile(r".*\((?:\\d)+\).*")
+    ep_patternB = re.compile(r".*(?:(?:\\E)|(?:\\A))+.*")
+    while(True):
+        patternA = input("Enter unique regex for detection. Provide a capture group for the episode number. (e. g. (\d\d))\nExample: " + x_patternA + "\n>> ")
+        if not ep_patternA.match(patternA):
+            print("Your regex pattern is missing a capture group for episode numbers. Episodes naturally have to be extinguishable by their seasonal or absolute episode numbers.")
+        else:
+            break;
+    while(True):
+        patternB = input("Enter target file name. You must provide a tag for either seasonal or absolute episode numbers.\nExample: " + x_patternB + "\nValid tags:\n\S - Season Number\n\E - Seasonal Episode Number\n\A - Absolute Episode Number\n\T - Season Title\n>> ")
+        if not ep_patternB.match(patternB):
+            print("Your filename is missing a capture group for episode numbers. Episodes naturally have to be extinguishable by their seasonal or absolute episode numbers.")
+        else:
+            break;
+    if booleanQuestion("Are episode numbers for this pattern set given per season or in absolute numbers? (s = seasonal; a = absolute)\n>> ", ['s',"seasonal", 'e', "episodic", 'y'], ['a',"absolute", 'n']):
+        season = input("Enter the season number for this pattern set.\nExample for a Season 2: 2\n>> ")
     else:
         season = "-1"
     
@@ -275,7 +294,27 @@ def patternWizard(tvdb_id, season, patternA, patternB, filename):
         while "\T" in filename_new:
             filename_new = patternReplace(filename_new, "\T", title, False)
         return clean_filename(filename_new)
-
+        
+def booleanQuestion(str, trues = ["y", "yes", '1', "true"], falses = ["n", "no", '0', "false"]):
+    while(True):
+        valid_answers = trues + falses
+        answer = input(str).lower()
+        if answer in valid_answers:
+            if answer in trues:
+                return True
+            elif answer in falses:
+                return False
+        else:
+            print("Invalid input.")
+        
+def numericInput(str):
+    while(True):
+        try:
+            value = int(input(str))
+        except ValueError as e:
+            print("Invalid input.")
+            continue
+        return value
 def main():
     tvdb_auth()
     qbt_auth()
@@ -354,9 +393,8 @@ def main():
                             for patternA, patternB in patterns.items():
                                 pattern = re.compile(patternA)
                                 if pattern.match(filename):
-                                    response = input("Rename this? (y/n)\n{}\n>> ".format('\\'.join(filter(None, [save_path, subpath, filename])))) if not renameWholeBatch else 'y'
-                                    if response.lower() == 'y':
-                                        if not renameWholeBatch and len(tor_files) > 1 and input("Try to rename whole batch? (y/n)\n>> ") == 'y':
+                                    if booleanQuestion("Rename this?\n{}\n>> ".format('\\'.join(filter(None, [save_path, subpath, filename])))) or renameWholeBatch:
+                                        if not renameWholeBatch and len(tor_files) > 1 and booleanQuestion("Try to rename whole batch?\n>> "):
                                             renameWholeBatch = True
                                         filename_new = patternWizard(tvdb_id, season, patternA, patternB, filename)
                                         tor_files = [tor_file.replace('\\'.join(filter(None, [subpath, filename])), '\\'.join(filter(None, [subpath, filename_new]))) for tor_file in tor_files]
@@ -373,8 +411,14 @@ def main():
                 series_options[i] = key
                 print(str(i) + ") " + value['name'] + " (" + str(key) + ")")
                 i+=1
-            index = int(input("Choose the correct series by index.\n>> "))    #TODO: Evaluate int
-            series_data = metadata_wizard(series_options[index], series_data)
+            while True:
+                index = numericInput("Choose the correct series by index.\n>> ")    #TODO: Evaluate int
+                try:
+                    series_data = metadata_wizard(series_options[index], series_data)
+                except KeyError as e:
+                    print("Invalid input.")
+                    continue
+                break
         elif job == 4:
             series_options = {}
             i = 0
@@ -382,7 +426,7 @@ def main():
                 series_options[i] = (key, value['name'])
                 print(str(i) + ") " + value['name'] + " (" + str(key) + ")")
                 i+=1
-            index = int(input("Choose the correct series by index.\n>> "))    #TODO: Evaluate int
+            index = numericInput("Choose the correct series by index.\n>> ")    #TODO: Evaluate int
             try:
                 del series_data[series_options[index][0]]
             except KeyError:
