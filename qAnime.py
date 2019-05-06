@@ -11,7 +11,7 @@ import time
 #fix entry editing
 
 qbt_client = "C:\\Program Files\\qBittorrent\\qbittorrent.exe"
-qbt_version = "v4.1.5"
+qbt_version = "v4.1.6"
 url_qbt = 'http://localhost:8080/api/v2'
 url_tvdb = 'https://api.thetvdb.com'
 log = "log/log.txt"
