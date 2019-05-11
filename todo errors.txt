@@ -48,5 +48,3 @@ Traceback (most recent call last):
   File "json\decoder.py", line 337, in decode
   File "json\decoder.py", line 355, in raw_decode
 json.decoder.JSONDecodeError: Expecting value: line 1 column 1 (char 0)
-[4744] Failed to execute script qAnime
-PS E:\Dev\qAnime>

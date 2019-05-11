@@ -331,6 +331,96 @@ def numericInput(str):
             print("Invalid input.")
             continue
         return value
+        
+def actionRenameScan(series_data):
+    torrents = fetchTorrents()
+    hashes = []
+    torrent_contents = {}
+    
+    if type(torrents) == list:
+        for item in torrents:
+            hashes.append(item['hash'])
+            
+    #fetch files in torrents
+    for item in hashes:
+        tc = fetchTorrentContent(item)
+        torrent_contents = {**torrent_contents, **tc}
+
+    os.system("taskkill /im  {}".format(qbt_client.split('\\')[-1]))
+    timer = 0
+    while is_process_running(qbt_client):
+        time.sleep(1)
+        timer+=1
+        if timer >= 60:
+            print("Error: Failed to terminate QBittorrent after 60 seconds.")
+            return
+        print(f"Waiting for QBittorrent to terminate... ({timer}s)", end='\r')
+    print("\nQBittorrent has been terminated.")
+        
+    #check all files by regex in our series data
+    for hash, file_data in torrent_contents.items():
+        save_path = file_data[0]
+        if save_path[-1] == '\\':   #remove trailing backslash for tidy string joins
+            save_path = save_path[:-1]
+        tor_files = []
+        renameWholeBatch = False
+        for file in file_data[1]:
+            tor_files.append(file['name'])   #list of all filenames in torrent, used for fastresume manipulation, needed for batch torrents
+        for file in file_data[1]:
+            if file['priority'] == 0:   #skip ignored files
+                continue
+            filename_split = file['name'].split('\\')
+            subpath = '\\'.join(filename_split[:-1])    #is empty string if no subpath
+            filename = filename_split[-1]
+            for tvdb_id, data in series_data.items():
+                for season, patterns in data['patterns'].items():
+                    for patternA, patternB in patterns.items():
+                        pattern = re.compile(patternA)
+                        if pattern.match(filename):
+                            if renameWholeBatch or booleanQuestion("Rename this?\n{}\n>> ".format('\\'.join(filter(None, [save_path, subpath, filename])))):
+                                if not renameWholeBatch and len(tor_files) > 1 and booleanQuestion("Try to rename whole batch?\n>> "):
+                                    renameWholeBatch = True
+                                filename_new = patternWizard(tvdb_id, season, patternA, patternB, filename)
+                                tor_files = [tor_file.replace('\\'.join(filter(None, [subpath, filename])), '\\'.join(filter(None, [subpath, filename_new]))) for tor_file in tor_files]
+                                renameTorrent(hash, save_path, subpath, filename, filename_new, tor_files)
+    print("Restarting QBittorrent...")
+    os.startfile(qbt_client)
+    qbt_auth()
+    return
+        
+def actionEdit(series_data):
+    series_options = {}
+    i = 0
+    for key, value in series_data.items():
+        series_options[i] = key
+        print(str(i) + ") " + value['name'] + " (" + str(key) + ")")
+        i+=1
+    while True:
+        index = numericInput("Choose the correct series by index.\n>> ")
+        try:
+            series_data = metadata_wizard(series_options[index], series_data)
+        except KeyError as e:
+            print("Invalid input.")
+            continue
+        break
+    return series_data
+    
+def actionDelete(series_data):
+    series_options = {}
+    i = 0
+    for key, value in series_data.items():
+        series_options[i] = (key, value['name'])
+        print(str(i) + ") " + value['name'] + " (" + str(key) + ")")
+        i+=1
+    index = numericInput("Choose the correct series by index.\n>> ")
+    try:
+        del series_data[series_options[index][0]]
+    except KeyError:
+        print("Error: Tried to remove an invalid series entry.")
+        return
+    print("Removed series data of " + series_options[index][1] + ".")
+    return series_data
+    
 def main():
     tvdb_auth()
     qbt_auth()
@@ -365,90 +455,19 @@ def main():
             print("Exiting.")
             break
         elif job == 1:
-            torrents = fetchTorrents()
-            hashes = []
-            contents = {}
-            
-            if type(torrents) == list:
-                for item in torrents:
-                    hashes.append(item['hash'])
-                    
-            #fetch files in torrents
-            for item in hashes:
-                tc = fetchTorrentContent(item)
-                contents = {**contents, **tc}
-    
-            os.system("taskkill /im  {}".format(qbt_client.split('\\')[-1]))
-            timer = 0
-            while is_process_running(qbt_client):
-                time.sleep(1)
-                timer+=1
-                if timer >= 60:
-                    print("Error: Failed to terminate QBittorrent after 60 seconds.")
-                    return
-                print(f"Waiting for QBittorrent to terminate... ({timer}s)", end='\r')
-            print("\nQBittorrent has been terminated.")
-                
-            #check all files by regex in our series data
-            for hash, file_data in contents.items():
-                save_path = file_data[0]
-                if save_path[-1] == '\\':           #remove trailing backslash for tidy string joins
-                    save_path = save_path[:-1]
-                tor_files = []
-                renameWholeBatch = False
-                for file in file_data[1]:
-                    tor_files.append(file['name'])   #list of all filenames in torrent used for fastresume manipulation, needed for batch torrents
-                for file in file_data[1]:
-                    if file['priority'] == 0:   #skip ignored files
-                        continue
-                    filename_split = file['name'].split('\\')
-                    subpath = '\\'.join(filename_split[:-1])    #is empty string if no subpath
-                    filename = filename_split[-1]
-                    for tvdb_id, data in series_data.items():
-                        for season, patterns in data['patterns'].items():
-                            for patternA, patternB in patterns.items():
-                                pattern = re.compile(patternA)
-                                if pattern.match(filename):
-                                    if renameWholeBatch or booleanQuestion("Rename this?\n{}\n>> ".format('\\'.join(filter(None, [save_path, subpath, filename])))):
-                                        if not renameWholeBatch and len(tor_files) > 1 and booleanQuestion("Try to rename whole batch?\n>> "):
-                                            renameWholeBatch = True
-                                        filename_new = patternWizard(tvdb_id, season, patternA, patternB, filename)
-                                        tor_files = [tor_file.replace('\\'.join(filter(None, [subpath, filename])), '\\'.join(filter(None, [subpath, filename_new]))) for tor_file in tor_files]
-                                        renameTorrent(hash, save_path, subpath, filename, filename_new, tor_files)
-            print("Restarting QBittorrent...")
-            os.startfile(qbt_client)
-            qbt_auth()
+            actionRenameScan(series_data)
         elif job == 2:
-            series_data = metadata_wizard(-1, series_data)
+            result = metadata_wizard(-1, series_data)
+            if result != None:
+                series_data = result
         elif job == 3:
-            series_options = {}
-            i = 0
-            for key, value in series_data.items():
-                series_options[i] = key
-                print(str(i) + ") " + value['name'] + " (" + str(key) + ")")
-                i+=1
-            while True:
-                index = numericInput("Choose the correct series by index.\n>> ")
-                try:
-                    series_data = metadata_wizard(series_options[index], series_data)
-                except KeyError as e:
-                    print("Invalid input.")
-                    continue
-                break
+            result = actionEdit(series_data)
+            if result != None:
+                series_data = result
         elif job == 4:
-            series_options = {}
-            i = 0
-            for key, value in series_data.items():
-                series_options[i] = (key, value['name'])
-                print(str(i) + ") " + value['name'] + " (" + str(key) + ")")
-                i+=1
-            index = numericInput("Choose the correct series by index.\n>> ")
-            try:
-                del series_data[series_options[index][0]]
-            except KeyError:
-                print("Error: Tried to remove an invalid series entry.")
-                continue
-            print("Removed series data of " + series_options[index][1] + ".")
+            result = actionDelete(series_data)
+            if result != None:
+                series_data = result
         else:
             print("Invalid input.")
         with open(series_data_file, 'w') as f:
