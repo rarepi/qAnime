@@ -1,0 +1,52 @@
+	Crash Case #2:
+	Works fine after a restart
+	Cannot reproduce
+	Added debug stuff for next time it happens
+What to do?
+>> 2
+Enter the name of the series.
+Example: Mob Psycho 100
+>> Escaflowne
+0) Vision of Escaflowne (TV Tokyo)
+Choose the correct series by index.
+>> 0
+You picked "Vision of Escaflowne". TheTVDB ID is 77248.
+Enter unique regex for detection. Provide a capture group for the episode number. (e. g. (\d\d))
+Example: ^\[HorribleSubs\] Mob Psycho 100 - (\d\d) \[720p\]\.mkv
+>> ^\[bonkai77\]\.The\.Vision\.of\.Escaflowne\.Episode\.(\d\d)\..+\.1080p\.Dual\.Audio\.Bluray \[[0-Z]+\]\.mkv
+Enter target file name. You must provide a tag for either seasonal or absolute episode numbers.
+Example: Mob Psycho 100 - s\S\Se\E\E - [\A\A] \T - [2019 ENG-Sub AAC 720p HDTV x264 - HorribleSubs].mkv
+Valid tags:
+\S - Season Number
+\E - Seasonal Episode Number
+\A - Absolute Episode Number
+\T - Season Title
+>> The Vision of Escaflowne - s\S\Se\E\E - [\A\A] \T [1996 ENG-Sub DL AAC 1080p BluRay 10bit HEVC x265 - bonkai77].mkv
+Are episode numbers for this pattern set given per season or in absolute numbers? (s = seasonal; a = absolute)
+>> s
+Enter the season number for this pattern set.
+Example for a Season 2: 2
+>> 1
+
+1) Scan for new episodes
+2) Add data of a new series
+3) Edit data of a series
+4) Delete data of a series
+0) Exit
+
+What to do?
+>> 1
+Traceback (most recent call last):
+  File "qAnime.py", line 441, in <module>
+    main()
+  File "qAnime.py", line 352, in main
+    torrents = fetchTorrents()
+  File "qAnime.py", line 59, in fetchTorrents
+    json_data = result.json()
+  File "site-packages\requests\models.py", line 897, in json
+  File "json\__init__.py", line 348, in loads
+  File "json\decoder.py", line 337, in decode
+  File "json\decoder.py", line 355, in raw_decode
+json.decoder.JSONDecodeError: Expecting value: line 1 column 1 (char 0)
+[4744] Failed to execute script qAnime
+PS E:\Dev\qAnime>
