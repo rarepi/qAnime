@@ -9,8 +9,7 @@ import sys
 #TODO:
 #Input Evaluations
 #remove by pattern in series, not just by series
-#fix entry editing
-#add fastresume path to settings
+#same patternA may not be in two seasons
 
 series_data_file = "./data.json"
 settings_file = "./settings.json"
@@ -84,7 +83,7 @@ def renameTorrent(hash, save_path, subpath, old_filename, new_filename, tor_file
     """
 
     while True: #using break in exceptions - why not return though? gotta take a closer look at this later on
-        file = "C:/Users/Shiki/AppData/Local/qBittorrent/BT_backup/" + hash + ".fastresume"
+        file = "%LOCALAPPDATA%/qBittorrent/BT_backup/" + hash + ".fastresume"
         new_filename = clean_filename(new_filename)
         with open(file, 'rb') as f:
             fastresume = f.read()
@@ -97,7 +96,6 @@ def renameTorrent(hash, save_path, subpath, old_filename, new_filename, tor_file
         qbttag_queue_position = b"17:qBt-queuePosition"
         new_filename_relative_length = bytes(str(len(new_filename_relative)), "ascii")
             
-        
         #build byte string of file list 
         tor_files_string = b""
         for tor_file in tor_files:
@@ -233,12 +231,19 @@ def metadata_wizard(id, series_data):
         
         pattern_set_options = {}
         i = 0
-        for item in sdata['patterns']:
-            pattern_set_options[i] = item
-            print(str(i) + ") " + pattern_set_options[i][0] + " RENAMES TO " + pattern_set_options[i][1])
-            i+=1
-        index = numericInput("Choose the pattern set you want to replace by index.\n>> ")
-        print("Pattern set \"" + sdata['patterns'].pop(index) + "\" has been removed.")
+        for season, pattern_pairs in sdata['patterns'].items():
+            for patternA, patternB in pattern_pairs.items():
+                pattern_set_options[i] = (season, patternA)
+                print(str(i) + ") " + patternA + " RENAMES TO " + patternB)
+                i+=1
+        while True:
+            index = numericInput("Choose the pattern set you want to replace by index.\n>> ")
+            try:
+                print("Pattern set \"pattern_set_options[index][1] : " + sdata['patterns'][pattern_set_options[index][0]].pop(pattern_set_options[index][1]) + "\" has been removed.")
+            except KeyError as e:
+                print("Invalid input.")
+                continue
+            break
 
     ep_patternA = re.compile(r".*\((?:\\d)+\).*")
     ep_patternB = re.compile(r".*(?:(?:\\E)|(?:\\A))+.*")
@@ -472,12 +477,11 @@ def main():
             series_data = {}
 
     while True:
-        print("\n1) Scan for new episodes\n"
+        job = numericInput("\n1) Scan for new episodes\n"
             "2) Add data of a new series\n"
             "3) Edit data of a series\n"
             "4) Delete data of a series\n"
-            "0) Exit\n")
-        job = int(input("What to do?\n>> "))
+            "0) Exit\n\nWhat to do?\n>> ")
 
         if job == 0:
             print("Exiting.")
