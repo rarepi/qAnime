@@ -4,21 +4,18 @@ import os
 import re #regex
 import psutil
 import time
+import sys
 
 #TODO:
 #Input Evaluations
 #remove by pattern in series, not just by series
 #fix entry editing
+#add fastresume path to settings
 
-qbt_client = "C:\\Program Files\\qBittorrent\\qbittorrent.exe"
-qbt_version = "v4.1.6"
-url_qbt = 'http://localhost:8080/api/v2'
-url_tvdb = 'https://api.thetvdb.com'
-log = "log/log.txt"
 series_data_file = "./data.json"
-os.makedirs(os.path.dirname(log), exist_ok=True)
+settings_file = "./settings.json"
 os.makedirs(os.path.dirname(series_data_file), exist_ok=True)
-
+os.makedirs(os.path.dirname(settings_file), exist_ok=True)
 
 def clean_filename(filename):
     illegal_characters = '\\"/:<>?'
@@ -27,22 +24,22 @@ def clean_filename(filename):
 
 def qbt_auth():
     global qbt_cookie
-    auth = {'username': 'shiki', 'password': 'omegalul'}
+    auth = {'username': settings["qbt_username"], 'password': settings["qbt_password"]}
     try:
-        qbt_cookie = requests.get(url_qbt + '/auth/login', params=auth)
+        qbt_cookie = requests.get(settings["qbt_url"] + '/auth/login', params=auth)
     except requests.exceptions.ConnectionError as e:
         print("Failed connecting to QBittorrent WebAPI. Make sure QBittorrent is running and its Web UI is enabled.")
         sys.exit()
     
 def get_qbt_version():
-    version = requests.get(url_qbt + '/app/version', cookies=qbt_cookie.cookies)
+    version = requests.get(settings["qbt_url"] + '/app/version', cookies=qbt_cookie.cookies)
     return version.text
     
 def fetchTorrentContent(hash):
     options = {'hash': hash}
-    result_files = requests.get(url_qbt + '/torrents/files', cookies=qbt_cookie.cookies, params=options)
+    result_files = requests.get(settings["qbt_url"] + '/torrents/files', cookies=qbt_cookie.cookies, params=options)
     json_files = result_files.json()
-    result_properties = requests.get(url_qbt + '/torrents/properties', cookies=qbt_cookie.cookies, params=options)
+    result_properties = requests.get(settings["qbt_url"] + '/torrents/properties', cookies=qbt_cookie.cookies, params=options)
     json_properties = result_properties.json()
     
     save_path = json_properties['save_path']
@@ -55,7 +52,7 @@ def fetchTorrentContent(hash):
 
 def fetchTorrents():
     options = {'sort': 'name'}
-    result = requests.get(url_qbt + '/torrents/info', cookies=qbt_cookie.cookies, params=options)
+    result = requests.get(settings["qbt_url"] + '/torrents/info', cookies=qbt_cookie.cookies, params=options)
     try:
         json_data = result.json()
     except json.decoder.JSONDecodeError as e:
@@ -63,17 +60,12 @@ def fetchTorrents():
         print("Cookies:", qbt_cookie.cookies)
         print("Response Status Code:", result.status_code)
         print('Response Text: ', result.text)
-    
-    json_dump = json.dumps(json_data, indent=4, sort_keys=True)
-    with open(log, "w") as f:
-        f.write(json_dump)
-
     return json_data
     
 def is_process_running(process):
     for p in psutil.process_iter():
         try:
-            if qbt_client in p.exe():
+            if settings["qbt_client"] in p.exe():
                 return True
         except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
             pass
@@ -152,9 +144,9 @@ def renameTorrent(hash, save_path, subpath, old_filename, new_filename, tor_file
 
 def tvdb_auth():
     global tvdb_auth
-    auth = {"apikey" : "2323B61F3A9DA8C8", "username" : "elpingu42", "userkey" : "52EB4C6A3C24B288"}
+    auth = {"apikey" : settings["tvdb_apikey"]}
 
-    result = requests.post(url_tvdb + '/login', json=auth)
+    result = requests.post(settings["tvdb_url"] + '/login', json=auth)
     if result.status_code != 200:
         print('TVDB AUTHENTICATION FAILED')
         print('TVDB Auth Response Status Code: ', result.status_code)
@@ -165,7 +157,7 @@ def tvdb_auth():
 def tvdb_getSeries(name):
     head = {"Authorization" : "Bearer " + tvdb_auth, "Accept-Language" : "en", "content-type" : "application/json"}
     data = {'name': name}
-    result = requests.get(url_tvdb + '/search/series', headers = head, params = data)
+    result = requests.get(settings["tvdb_url"] + '/search/series', headers = head, params = data)
     if result.status_code == 404:
         print("TheTVDB.com was unable to find a series using the specified name. Try a different name.")
         return {}
@@ -199,7 +191,7 @@ def tvdb_getSingleEpisode(tvdb_id, season, episodeNumber):
         data = {'absoluteNumber': episodeNumber}
     else:
         data = {'airedSeason': season, 'airedEpisodeNumber': episodeNumber.lstrip('0')}
-    result = requests.get(url_tvdb + '/series/' + tvdb_id + '/episodes/query', headers = head, params = data)
+    result = requests.get(settings["tvdb_url"] + '/series/' + tvdb_id + '/episodes/query', headers = head, params = data)
     if result.status_code != 200:
         print("TVDB Episode Fetch Response Status Code: ", result.status_code)
         print("TVDB Episode Fetch Response: ", result.text)
@@ -346,9 +338,9 @@ def actionRenameScan(series_data):
         tc = fetchTorrentContent(item)
         torrent_contents = {**torrent_contents, **tc}
 
-    os.system("taskkill /im  {}".format(qbt_client.split('\\')[-1]))
+    os.system("taskkill /im  {}".format(settings["qbt_client"].split('\\')[-1]))
     timer = 0
-    while is_process_running(qbt_client):
+    while is_process_running(settings["qbt_client"]):
         time.sleep(1)
         timer+=1
         if timer >= 60:
@@ -384,7 +376,7 @@ def actionRenameScan(series_data):
                                 tor_files = [tor_file.replace('\\'.join(filter(None, [subpath, filename])), '\\'.join(filter(None, [subpath, filename_new]))) for tor_file in tor_files]
                                 renameTorrent(hash, save_path, subpath, filename, filename_new, tor_files)
     print("Restarting QBittorrent...")
-    os.startfile(qbt_client)
+    os.startfile(settings["qbt_client"])
     qbt_auth()
     return
         
@@ -421,15 +413,51 @@ def actionDelete(series_data):
     print("Removed series data of " + series_options[index][1] + ".")
     return series_data
     
+def writeSettings():
+    with open(settings_file, 'w') as f:
+        dump = json.dumps(settings, indent=4, sort_keys=False)
+        f.write(dump)
+    
 def main():
+    global settings
+    settings = {}
+    try:
+        with open(settings_file, 'r') as f:
+            settings = json.load(f)
+    except FileNotFoundError:
+        file = open(settings_file, 'w')
+    except json.decoder.JSONDecodeError:
+        if not os.stat(settings_file).st_size == 0:
+            print("Failed to read settings file. Check \"" + os.path.abspath(settings_file) + "\".")
+            quit()
+    if len(settings) == 0:
+        print("\nHello there! Running first time setup. To edit these settings in the future check out the settings.json file next to the executable.\n")
+        settings["qbt_version"] = "v4.1.6"
+        settings["qbt_client"] = input("Enter the absolute path for the QBittorrent executable.\nExample: C:\\Program Files\\qBittorrent\\qbittorrent.exe\n>>")
+        settings["qbt_username"] = input("Enter your login name for QBittorrent Web UI.\n>>")
+        settings["qbt_password"] = input("Enter your login password for QBittorrent Web UI.\n>>")
+        settings["qbt_url"] = input("Enter the URL to your QBittorrent Web API. (Keep empty for default)\nDefault: http://localhost:8080/api/v2\n>>")
+        if len(settings["qbt_url"]) == 0:
+            settings["qbt_url"] = "http://localhost:8080/api/v2"
+        settings["tvdb_url"] = input("Enter the URL to the TheTVDB.com API. (Keep empty for default)\nDefault: https://api.thetvdb.com\n>>")
+        if len(settings["tvdb_url"]) == 0:
+            settings["tvdb_url"] = "https://api.thetvdb.com"
+        #settings["tvdb_apikey"] = input("Enter your API Key for the TheTVDB.com API. (Keep empty for default)\n >>")
+        settings["tvdb_apikey"] = "2323B61F3A9DA8C8"
+        writeSettings()
+
     tvdb_auth()
     qbt_auth()
     
     qbt_version_cur = get_qbt_version()
-    if qbt_version != qbt_version_cur:
-        if input("WARNING: QBittorrent version mismatch: Got \"{}\", expected \"{}\". Compatibility is not ensured. \nContinue? (y/n)".format(qbt_version_cur, qbt_version)) != 'y':
+    if settings["qbt_version"] != qbt_version_cur:
+        if not booleanQuestion("WARNING: QBittorrent version mismatch: Got \"{}\", expected \"{}\". Compatibility is not ensured. \nContinue?\n>>".format(qbt_version_cur, settings["qbt_version"])):
             print("Exiting.")
             return
+        else:
+            if booleanQuestion("If you're sure your current version is supported we can set the supported version to your current one so you won't be warned again.\nDo it?\n>>"):
+                settings["qbt_version"] = qbt_version_cur
+                writeSettings()
     try:
         with open(series_data_file, 'r') as f:
             series_data = json.load(f)
@@ -438,7 +466,7 @@ def main():
         series_data = {}
     except json.decoder.JSONDecodeError:
         if not os.stat(series_data_file).st_size == 0:
-            print("Failed to read json data. Check \"" + os.path.abspath(series_data_file) + "\".")
+            print("Failed to read series data. Check \"" + os.path.abspath(series_data_file) + "\".")
             quit()
         else:
             series_data = {}
