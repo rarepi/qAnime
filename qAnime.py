@@ -32,7 +32,7 @@ def qbt_auth():
         qbt_cookie = requests.get(url_qbt + '/auth/login', params=auth)
     except requests.exceptions.ConnectionError as e:
         print("Failed connecting to QBittorrent WebAPI. Make sure QBittorrent is running and its Web UI is enabled.")
-        exit()
+        sys.exit()
     
 def get_qbt_version():
     version = requests.get(url_qbt + '/app/version', cookies=qbt_cookie.cookies)
@@ -56,7 +56,13 @@ def fetchTorrentContent(hash):
 def fetchTorrents():
     options = {'sort': 'name'}
     result = requests.get(url_qbt + '/torrents/info', cookies=qbt_cookie.cookies, params=options)
-    json_data = result.json()
+    try:
+        json_data = result.json()
+    except json.decoder.JSONDecodeError as e:
+        print("ERROR: QBittorrent returned an invalid torrent list.")
+        print("Cookies:", qbt_cookie.cookies)
+        print("Response Status Code:", result.status_code)
+        print('Response Text: ', result.text)
     
     json_dump = json.dumps(json_data, indent=4, sort_keys=True)
     with open(log, "w") as f:
@@ -160,7 +166,10 @@ def tvdb_getSeries(name):
     head = {"Authorization" : "Bearer " + tvdb_auth, "Accept-Language" : "en", "content-type" : "application/json"}
     data = {'name': name}
     result = requests.get(url_tvdb + '/search/series', headers = head, params = data)
-    if result.status_code != 200:
+    if result.status_code == 404:
+        print("TheTVDB.com was unable to find a series using the specified name. Try a different name.")
+        return {}
+    elif result.status_code != 200:
         print('TVDB Series Fetch Response Status Code: ', result.status_code)
         print('TVDB Series Fetch Response: ', result.text)
         return {}
@@ -172,14 +181,14 @@ def tvdb_getSeries(name):
             series_options[i] = (str(item['id']), item['seriesName'])
             print(str(i) + ") " + series_options[i][1] + " (" + item['network'] + ")")
             i+=1
-            while True:
-                index = numericInput("Choose the correct series by index.\n>> ")    #TODO: Evaluate int
-                try:
-                    print("You picked \"" + series_options[index][1] + "\". TheTVDB ID is " + series_options[index][0] + ".")
-                except KeyError as e:
-                    print("Invalid input.")
-                    continue
-                break
+        while True:
+            index = numericInput("Choose the correct series by index.\n>> ")
+            try:
+                print("You picked \"" + series_options[index][1] + "\". TheTVDB ID is " + series_options[index][0] + ".")
+            except KeyError as e:
+                print("Invalid input.")
+                continue
+            break
         
         return series_options[index]
 
@@ -192,8 +201,8 @@ def tvdb_getSingleEpisode(tvdb_id, season, episodeNumber):
         data = {'airedSeason': season, 'airedEpisodeNumber': episodeNumber.lstrip('0')}
     result = requests.get(url_tvdb + '/series/' + tvdb_id + '/episodes/query', headers = head, params = data)
     if result.status_code != 200:
-        print('TVDB Episode Fetch Response Status Code: ', result.status_code)
-        print('TVDB Episode Fetch Response: ', result.text)
+        print("TVDB Episode Fetch Response Status Code: ", result.status_code)
+        print("TVDB Episode Fetch Response: ", result.text)
         return
         
     for item in result.json()['data']:
@@ -209,8 +218,10 @@ def metadata_wizard(id, series_data):
     sdata = {}
     #add new entry
     if id is -1:
-        name = input("Enter the name of the series.\nExample: " + x_name + "\n>> ")
-        tvdb_series = tvdb_getSeries(name)
+        tvdb_series = {}
+        while len(tvdb_series) == 0:
+            name = input("Enter the name of the series.\nExample: " + x_name + "\n>> ")
+            tvdb_series = tvdb_getSeries(name)
         id = tvdb_series[0]
         name = tvdb_series[1]
         
@@ -234,17 +245,22 @@ def metadata_wizard(id, series_data):
             pattern_set_options[i] = item
             print(str(i) + ") " + pattern_set_options[i][0] + " RENAMES TO " + pattern_set_options[i][1])
             i+=1
-        index = numericInput("Choose the pattern set you want to replace by index.\n>> ")    #TODO: Evaluate int
+        index = numericInput("Choose the pattern set you want to replace by index.\n>> ")
         print("Pattern set \"" + sdata['patterns'].pop(index) + "\" has been removed.")
 
     ep_patternA = re.compile(r".*\((?:\\d)+\).*")
     ep_patternB = re.compile(r".*(?:(?:\\E)|(?:\\A))+.*")
     while(True):
         patternA = input("Enter unique regex for detection. Provide a capture group for the episode number. (e. g. (\d\d))\nExample: " + x_patternA + "\n>> ")
+        try:
+            re.compile(patternA)
+        except re.error as e:
+            print("Invalid regex.", e)
+            continue
         if not ep_patternA.match(patternA):
             print("Your regex pattern is missing a capture group for episode numbers. Episodes naturally have to be extinguishable by their seasonal or absolute episode numbers.")
-        else:
-            break;
+            continue
+        break
     while(True):
         patternB = input("Enter target file name. You must provide a tag for either seasonal or absolute episode numbers.\nExample: " + x_patternB + "\nValid tags:\n\S - Season Number\n\E - Seasonal Episode Number\n\A - Absolute Episode Number\n\T - Season Title\n>> ")
         if not ep_patternB.match(patternB):
@@ -393,7 +409,7 @@ def main():
                             for patternA, patternB in patterns.items():
                                 pattern = re.compile(patternA)
                                 if pattern.match(filename):
-                                    if booleanQuestion("Rename this?\n{}\n>> ".format('\\'.join(filter(None, [save_path, subpath, filename])))) or renameWholeBatch:
+                                    if renameWholeBatch or booleanQuestion("Rename this?\n{}\n>> ".format('\\'.join(filter(None, [save_path, subpath, filename])))):
                                         if not renameWholeBatch and len(tor_files) > 1 and booleanQuestion("Try to rename whole batch?\n>> "):
                                             renameWholeBatch = True
                                         filename_new = patternWizard(tvdb_id, season, patternA, patternB, filename)
@@ -412,7 +428,7 @@ def main():
                 print(str(i) + ") " + value['name'] + " (" + str(key) + ")")
                 i+=1
             while True:
-                index = numericInput("Choose the correct series by index.\n>> ")    #TODO: Evaluate int
+                index = numericInput("Choose the correct series by index.\n>> ")
                 try:
                     series_data = metadata_wizard(series_options[index], series_data)
                 except KeyError as e:
@@ -426,7 +442,7 @@ def main():
                 series_options[i] = (key, value['name'])
                 print(str(i) + ") " + value['name'] + " (" + str(key) + ")")
                 i+=1
-            index = numericInput("Choose the correct series by index.\n>> ")    #TODO: Evaluate int
+            index = numericInput("Choose the correct series by index.\n>> ")
             try:
                 del series_data[series_options[index][0]]
             except KeyError:
