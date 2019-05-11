@@ -83,7 +83,7 @@ def renameTorrent(hash, save_path, subpath, old_filename, new_filename, tor_file
     """
 
     while True: #using break in exceptions - why not return though? gotta take a closer look at this later on
-        file = "%LOCALAPPDATA%/qBittorrent/BT_backup/" + hash + ".fastresume"
+        file =  os.path.expandvars("%LOCALAPPDATA%/qBittorrent/BT_backup/") + hash + ".fastresume"
         new_filename = clean_filename(new_filename)
         with open(file, 'rb') as f:
             fastresume = f.read()
