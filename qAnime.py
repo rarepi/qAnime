@@ -1,6 +1,7 @@
 import requests
 import json
 import os
+import subprocess
 import re #regex
 import psutil
 import time
@@ -10,14 +11,19 @@ import sys
 #Input Evaluations
 #remove by pattern in series, not just by series
 #same patternA may not be in two seasons
+#editing: asking for season after editing?
 
 series_data_file = "./data.json"
 settings_file = "./settings.json"
 os.makedirs(os.path.dirname(series_data_file), exist_ok=True)
 os.makedirs(os.path.dirname(settings_file), exist_ok=True)
 
+class TVDBEpisodeNumberNotInResult(Exception):
+   """Raised when an episode number is not found in TVDB result"""
+   pass
+
 def clean_filename(filename):
-    illegal_characters = '\\"/:<>?'
+    illegal_characters = '\\"/:<>?|'
     rem_ill_chars = str.maketrans(illegal_characters, '_' * len(illegal_characters))
     return filename.translate(rem_ill_chars)
 
@@ -188,7 +194,10 @@ def tvdb_getSingleEpisode(tvdb_id, season, episodeNumber):
     if season == "-1":
         data = {'absoluteNumber': episodeNumber}
     else:
-        data = {'airedSeason': season, 'airedEpisodeNumber': episodeNumber.lstrip('0')}
+        episodeNumber = episodeNumber.lstrip('0') #episode number CAN be 0
+        if not episodeNumber:   #empty strings are false
+            episodeNumber = "0"
+        data = {'airedSeason': season, 'airedEpisodeNumber': episodeNumber}
     result = requests.get(settings["tvdb_url"] + '/series/' + tvdb_id + '/episodes/query', headers = head, params = data)
     if result.status_code != 200:
         print("TVDB Episode Fetch Response Status Code: ", result.status_code)
@@ -199,6 +208,7 @@ def tvdb_getSingleEpisode(tvdb_id, season, episodeNumber):
         if (season != "-1" and item['airedEpisodeNumber'] == int(episodeNumber) and item['airedSeason'] == int(season) 
             or season == "-1" and item['absoluteNumber'] == int(episodeNumber)):
             return item
+    raise TVDBEpisodeNumberNotInResult
         
 def metadata_wizard(id, series_data):
     x_name = "Mob Psycho 100"
@@ -206,6 +216,8 @@ def metadata_wizard(id, series_data):
     x_patternB = "Mob Psycho 100 - s\S\Se\E\E - [\A\A] \T - [2019 ENG-Sub AAC 720p HDTV x264 - HorribleSubs].mkv"
     
     sdata = {}
+    patternA = ""
+    patternB = ""
     #add new entry
     if id is -1:
         tvdb_series = {}
@@ -216,7 +228,7 @@ def metadata_wizard(id, series_data):
         name = tvdb_series[1]
         
         if id in series_data.keys():
-            if input("Series ID " + id + " already has an entry named \"" + series_data[id]['name'] + "\". Add new pattern? (y/n)\n>> ") != 'y':
+            if not booleanQuestion("Series ID " + id + " already has an entry named \"" + series_data[id]['name'] + "\". Add new pattern?\n>> "):
                 return
             sdata = series_data[id]
         else:
@@ -232,14 +244,16 @@ def metadata_wizard(id, series_data):
         pattern_set_options = {}
         i = 0
         for season, pattern_pairs in sdata['patterns'].items():
-            for patternA, patternB in pattern_pairs.items():
-                pattern_set_options[i] = (season, patternA)
-                print(str(i) + ") " + patternA + " RENAMES TO " + patternB)
+            for a, b in pattern_pairs.items():
+                pattern_set_options[i] = (season, a)
+                print(str(i) + ") " + a + " RENAMES TO " + b)
                 i+=1
         while True:
             index = numericInput("Choose the pattern set you want to replace by index.\n>> ")
             try:
-                print("Pattern set \"pattern_set_options[index][1] : " + sdata['patterns'][pattern_set_options[index][0]].pop(pattern_set_options[index][1]) + "\" has been removed.")
+                patternA = pattern_set_options[index][1]
+                patternB = sdata['patterns'][pattern_set_options[index][0]][pattern_set_options[index][1]]
+                print("Pattern set \"{} : {}\" has been removed.".format(pattern_set_options[index][1], sdata['patterns'][pattern_set_options[index][0]].pop(pattern_set_options[index][1])))
             except KeyError as e:
                 print("Invalid input.")
                 continue
@@ -248,22 +262,35 @@ def metadata_wizard(id, series_data):
     ep_patternA = re.compile(r".*\((?:\\d)+\).*")
     ep_patternB = re.compile(r".*(?:(?:\\E)|(?:\\A))+.*")
     while(True):
-        patternA = input("Enter unique regex for detection. Provide a capture group for the episode number. (e. g. (\d\d))\nExample: " + x_patternA + "\n>> ")
+        new = ""
+        if len(patternA) == 0:
+            new = input("Enter unique regex for detection. Provide a capture group for the episode number. (e. g. (\d\d))\nExample: " + x_patternA + "\n>> ")
+        else:
+            new = input("Enter your new unique regex for detection. Provide a capture group for the episode number. (e. g. (\d\d))\nExample: " + x_patternA + "\nKeep empty to keep the current regex: " + patternA + "\n>> ")
+            if len(new) == 0:
+                new = patternA
         try:
-            re.compile(patternA)
+            re.compile(new)
         except re.error as e:
             print("Invalid regex.", e)
             continue
-        if not ep_patternA.match(patternA):
+        if not ep_patternA.match(new):
             print("Your regex pattern is missing a capture group for episode numbers. Episodes naturally have to be extinguishable by their seasonal or absolute episode numbers.")
             continue
+        patternA = new
         break
     while(True):
-        patternB = input("Enter target file name. You must provide a tag for either seasonal or absolute episode numbers.\nExample: " + x_patternB + "\nValid tags:\n\S - Season Number\n\E - Seasonal Episode Number\n\A - Absolute Episode Number\n\T - Season Title\n>> ")
-        if not ep_patternB.match(patternB):
-            print("Your filename is missing a capture group for episode numbers. Episodes naturally have to be extinguishable by their seasonal or absolute episode numbers.")
+        new = ""
+        if len(patternB) == 0:
+            new = input("Enter target file name. You must provide a tag for either seasonal or absolute episode numbers.\nExample: " + x_patternB + "\nValid tags:\n\S - Season Number\n\E - Seasonal Episode Number\n\A - Absolute Episode Number\n\T - Season Title\n>> ")
         else:
-            break;
+            new = input("Enter your new target file name. You must provide a tag for either seasonal or absolute episode numbers.\nExample: " + x_patternB + "\nValid tags:\n\S - Season Number\n\E - Seasonal Episode Number\n\A - Absolute Episode Number\n\T - Season Title\nKeep empty to keep the current pattern: " + patternB + "\n>> ")
+            if len(new) == 0:
+                new = patternB
+        if not ep_patternB.match(new):
+            print("Your filename is missing a capture group for episode numbers. Episodes naturally have to be extinguishable by their seasonal or absolute episode numbers.")
+        patternB = new
+        break;
     if booleanQuestion("Are episode numbers for this pattern set given per season or in absolute numbers? (s = seasonal; a = absolute)\n>> ", ['s',"seasonal", 'e', "episodic", 'y'], ['a',"absolute", 'n']):
         season = input("Enter the season number for this pattern set.\nExample for a Season 2: 2\n>> ")
     else:
@@ -339,11 +366,17 @@ def actionRenameScan(series_data):
             hashes.append(item['hash'])
             
     #fetch files in torrents
+    i = 0
     for item in hashes:
+        i+=1
+        print("Fetching torrent " + str(i) + "/" + str(len(hashes)), end="\r")
+        sys.stdout.flush()
         tc = fetchTorrentContent(item)
         torrent_contents = {**torrent_contents, **tc}
+    print('\nFetching done.')
 
-    os.system("taskkill /im  {}".format(settings["qbt_client"].split('\\')[-1]))
+    #os.system("taskkill /im  {}".format(settings["qbt_client"].split('\\')[-1]))
+    subprocess.call("taskkill /im  {}".format(settings["qbt_client"].split('\\')[-1]), shell=True)
     timer = 0
     while is_process_running(settings["qbt_client"]):
         time.sleep(1)
@@ -375,11 +408,14 @@ def actionRenameScan(series_data):
                         pattern = re.compile(patternA)
                         if pattern.match(filename):
                             if renameWholeBatch or booleanQuestion("Rename this?\n{}\n>> ".format('\\'.join(filter(None, [save_path, subpath, filename])))):
-                                if not renameWholeBatch and len(tor_files) > 1 and booleanQuestion("Try to rename whole batch?\n>> "):
-                                    renameWholeBatch = True
-                                filename_new = patternWizard(tvdb_id, season, patternA, patternB, filename)
-                                tor_files = [tor_file.replace('\\'.join(filter(None, [subpath, filename])), '\\'.join(filter(None, [subpath, filename_new]))) for tor_file in tor_files]
-                                renameTorrent(hash, save_path, subpath, filename, filename_new, tor_files)
+                                try:
+                                    if not renameWholeBatch and len(tor_files) > 1 and booleanQuestion("Try to rename whole batch?\n>> "):
+                                        renameWholeBatch = True
+                                    filename_new = patternWizard(tvdb_id, season, patternA, patternB, filename)
+                                    tor_files = [tor_file.replace('\\'.join(filter(None, [subpath, filename])), '\\'.join(filter(None, [subpath, filename_new]))) for tor_file in tor_files]
+                                    renameTorrent(hash, save_path, subpath, filename, filename_new, tor_files)
+                                except TVDBEpisodeNumberNotInResult:
+                                    print("Failed to find an episode entry for this episode. Wait for TheTVDB to add this entry or rename the file by hand.")
     print("Restarting QBittorrent...")
     os.startfile(settings["qbt_client"])
     qbt_auth()

@@ -48,3 +48,30 @@ Traceback (most recent call last):
   File "json\decoder.py", line 337, in decode
   File "json\decoder.py", line 355, in raw_decode
 json.decoder.JSONDecodeError: Expecting value: line 1 column 1 (char 0)
+
+
+
+
+
+
+
+What to do?
+>> 1
+ERFOLGREICH: Ein Beendigungssignal wurde an den Prozess
+"qbittorrent.exe" mit der PID 1204 geschickt.
+Waiting for QBittorrent to terminate... (7s)
+QBittorrent has been terminated.
+Rename this?
+W:\Anime\Series\DanMachi\S02\[HorribleSubs] DanMachi S2 - 00 [720p].mkv
+>> y
+Traceback (most recent call last):
+  File "qAnime.py", line 529, in <module>
+    main()
+  File "qAnime.py", line 511, in main
+    actionRenameScan(series_data)
+  File "qAnime.py", line 401, in actionRenameScan
+    filename_new = patternWizard(tvdb_id, season, patternA, patternB, filename)
+  File "qAnime.py", line 314, in patternWizard
+    seasonNumber = episode_json_data['airedSeason']
+TypeError: 'NoneType' object is not subscriptable
+PS E:\Dev\qAnime>
