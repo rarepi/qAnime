@@ -78,34 +78,26 @@ def is_process_running(process):
             pass
     return False
             
-def renameTorrent(torrent, targetfile, new_filename):
+def renameTorrent(torrent_info, target_file_info, new_filename):
     """
-    Renames a torrent and manipulates the QBittorrent fastresume files accordingly.
-    
-    :param str hash: QBittorrent's torrent hash
-    :param str save_path: The torrent save path
-    :param str subpath: path of subfolders inside save_path
-    :param str old_filename: The current filename
-    :param str new_filename: The new filename
-    :param list(str) tor_files: list of relative filenames of torrent
+    Renames a torrent and its files and manipulates the QBittorrent fastresume file accordingly.
     """
-
     while True: #using break in exceptions - why not return though? gotta take a closer look at this later on
 
         # QBittorrent's fastresume files are used at startup to quickly load up any torrents known to it.
         # Right now, renaming of files is not supported via Web API so instead we edit the fastresume files while the Application is closed.
         # Data can be located by certain tags such as "qBt-name" and any form of string is prefixed with its length and a colon.
         # e.g.: The filename "One Piece e300.mp4" would be stored as "18:One Piece e300.mp4". Apparently, unicode characters are still counted as only one character.
-        file =  os.path.expandvars("%LOCALAPPDATA%/qBittorrent/BT_backup/") + torrent.hash + ".fastresume"
-        new_filename = clean_filename(new_filename)
-        with open(file, 'rb') as f:
+        fr = os.path.expandvars("%LOCALAPPDATA%/qBittorrent/BT_backup/") + torrent_info.hash + ".fastresume"
+        with open(fr, 'rb') as f:
             fastresume = f.read()
 
-        old_filename_relative = bytes('\\'.join(filter(None, [targetfile.subpath, targetfile.filename])), 'utf-8')
+        old_filename_relative = bytes('\\'.join(filter(None, [target_file_info.subpath, target_file_info.filename])), 'utf-8')
         old_filename_relative_length = bytes(str(len(old_filename_relative)), "ascii")
         old_bytes = old_filename_relative_length + b':' + old_filename_relative
 
-        new_filename_relative = bytes('\\'.join(filter(None, [targetfile.subpath, new_filename])), 'utf-8')
+        new_filename = clean_filename(new_filename)
+        new_filename_relative = bytes('\\'.join(filter(None, [target_file_info.subpath, new_filename])), 'utf-8')
         new_filename_relative_length = bytes(str(len(new_filename_relative)), "ascii")
         new_bytes = new_filename_relative_length + b':' + new_filename_relative
 
@@ -113,29 +105,29 @@ def renameTorrent(torrent, targetfile, new_filename):
         fastresume = fastresume[:old_idx] + new_bytes + fastresume[old_idx+len(old_bytes):]
 
         #insert new filename as torrent name unless it's a batch torrent
-        if len(torrent.files) == 1:
+        if len(torrent_info.files) == 1:
             qbttag_name = b"8:qBt-name" #torrent title prefix
             title_idx = fastresume.index(qbttag_name)+len(qbttag_name) #starting index of title data
             old_title_length = int(fastresume[title_idx:fastresume.index(b':', title_idx)]) #figure out length of current title by parsing its prefixed number
             fastresume = fastresume[:title_idx] + new_bytes + fastresume[title_idx+len(str(old_title_length))+1+old_title_length:]
 
         try:
-            os.rename('\\'.join(filter(None, [torrent.save_path, targetfile.subpath, targetfile.filename])), '\\'.join(filter(None, [torrent.save_path, targetfile.subpath, new_filename])))
-            print(f"Renamed {targetfile.filename} to {new_filename}.")
+            os.rename('\\'.join(filter(None, [torrent_info.save_path, target_file_info.subpath, target_file_info.filename])), '\\'.join(filter(None, [torrent_info.save_path, target_file_info.subpath, new_filename])))
+            print(f"Renamed {target_file_info.filename} to {new_filename}.")
         except OSError as e:
             print(e.strerror)
-            print('\\'.join(filter(None, [torrent.save_path, targetfile.subpath, targetfile.filename])))
+            print('\\'.join(filter(None, [torrent_info.save_path, target_file_info.subpath, target_file_info.filename])))
             print("File renaming failed. No changes are being made.")
             break
         try:
-            with open(file, 'wb') as f:
+            with open(fr, 'wb') as f:
                 f.write(fastresume)
             print("QBittorrent files have been manipulated accordingly.")
         except OSError as e:
             print(e.strerror)
             print("Failed to manipulate QBittorrent files. Reverting file rename...")
             try:
-                os.rename('\\'.join(filter(None, [torrent.save_path, targetfile.subpath, new_filename])), '\\'.join(filter(None, [torrent.save_path, targetfile.subpath, targetfile.filename])))
+                os.rename('\\'.join(filter(None, [torrent_info.save_path, target_file_info.subpath, new_filename])), '\\'.join(filter(None, [torrent_info.save_path, target_file_info.subpath, target_file_info.filename])))
                 print("File renaming reverted.")
             except OSError as e:
                 print(e.strerror)
@@ -371,20 +363,20 @@ def actionRenameScan(series_data):
     #check all files by regex in our series data
     for torrent in torrents:
         renameWholeBatch = False
-        for file in torrent.files:
-            if file.priority == 0:   #skip ignored files
+        for file_info in torrent.files:
+            if file_info.priority == 0:   #skip ignored files
                 continue
             for tvdb_id, data in series_data.items():
                 for season, patterns in data['patterns'].items():
                     for patternA, patternB in patterns.items():
                         pattern = re.compile(patternA)
-                        if pattern.match(file.filename):
-                            if renameWholeBatch or booleanQuestion("Rename this?\n{}\n>> ".format('\\'.join(filter(None, [torrent.save_path, file.subpath, file.filename])))):
+                        if pattern.match(file_info.filename):
+                            if renameWholeBatch or booleanQuestion("Rename this?\n{}\n>> ".format('\\'.join(filter(None, [torrent.save_path, file_info.subpath, file_info.filename])))):
                                 try:
                                     if not renameWholeBatch and len(torrent.files) > 1 and booleanQuestion("Try to rename whole batch?\n>> "):
                                         renameWholeBatch = True
-                                    filename_new = patternWizard(tvdb_id, season, patternA, patternB, file.filename)
-                                    renameTorrent(torrent, file, filename_new)
+                                    filename_new = patternWizard(tvdb_id, season, patternA, patternB, file_info.filename)
+                                    renameTorrent(torrent, file_info, filename_new)
                                 except TVDBEpisodeNumberNotInResult:
                                     print("Failed to find an episode entry for this episode. Wait for TheTVDB to add this entry or rename the file by hand.")
     print("Restarting QBittorrent...")

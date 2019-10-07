@@ -2,6 +2,7 @@ settings.json
 data.json
 build
 __pycache__
+.vscode
 *.exe
 *.bat
 *_old.py
