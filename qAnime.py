@@ -9,6 +9,8 @@ import sys
 
 from structure.torrent import Torrent, File, Episode
 
+DEBUG_OUTPUT_ENABLED = True
+
 #TODO:
 #Input Evaluations
 #remove by pattern in series, not just by series
@@ -23,6 +25,10 @@ os.makedirs(os.path.dirname(settings_file), exist_ok=True)
 class TVDBEpisodeNumberNotInResult(Exception):
    """Raised when an episode number is not found in TVDB result"""
    pass
+
+def debug(output):
+    if DEBUG_OUTPUT_ENABLED:
+        print(output)
 
 def clean_filename(filename):
     illegal_characters = '\\"/:<>?|'
@@ -101,7 +107,10 @@ def renameTorrent(torrent_info, target_file_info, new_filename):
         new_filename_relative_length = bytes(str(len(new_filename_relative)), "ascii")
         new_bytes = new_filename_relative_length + b':' + new_filename_relative
 
-        old_idx = fastresume.index(old_bytes)
+        tag = b"12:mapped_filesl" #torrent file list prefix (last l character is not part of the tag string but assumably prefixes a list)
+        file_list_idx = fastresume.index(tag)+len(tag) #starting index of file list data
+        old_idx = fastresume.index(old_bytes, file_list_idx)
+        debug(f"Replacing \n{old_bytes}\nwith \n{new_bytes}\nat index {old_idx}")
         fastresume = fastresume[:old_idx] + new_bytes + fastresume[old_idx+len(old_bytes):]
 
         #insert new filename as torrent name unless it's a batch torrent
@@ -361,9 +370,9 @@ def actionRenameScan(series_data):
     print("\nQBittorrent has been terminated.")
         
     #check all files by regex in our series data
-    for torrent in torrents:
+    for torrent_info in torrents:
         renameWholeBatch = False
-        for file_info in torrent.files:
+        for file_info in torrent_info.files:
             if file_info.priority == 0:   #skip ignored files
                 continue
             for tvdb_id, data in series_data.items():
@@ -371,12 +380,12 @@ def actionRenameScan(series_data):
                     for patternA, patternB in patterns.items():
                         pattern = re.compile(patternA)
                         if pattern.match(file_info.filename):
-                            if renameWholeBatch or booleanQuestion("Rename this?\n{}\n>> ".format('\\'.join(filter(None, [torrent.save_path, file_info.subpath, file_info.filename])))):
+                            if renameWholeBatch or booleanQuestion("Rename this?\n{}\n>> ".format('\\'.join(filter(None, [torrent_info.save_path, file_info.subpath, file_info.filename])))):
                                 try:
-                                    if not renameWholeBatch and len(torrent.files) > 1 and booleanQuestion("Try to rename whole batch?\n>> "):
+                                    if not renameWholeBatch and len(torrent_info.files) > 1 and booleanQuestion("Try to rename whole batch?\n>> "):
                                         renameWholeBatch = True
                                     filename_new = patternWizard(tvdb_id, season, patternA, patternB, file_info.filename)
-                                    renameTorrent(torrent, file_info, filename_new)
+                                    renameTorrent(torrent_info, file_info, filename_new)
                                 except TVDBEpisodeNumberNotInResult:
                                     print("Failed to find an episode entry for this episode. Wait for TheTVDB to add this entry or rename the file by hand.")
     print("Restarting QBittorrent...")
