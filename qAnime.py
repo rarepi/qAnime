@@ -30,6 +30,12 @@ def debug(output):
     if DEBUG_OUTPUT_ENABLED:
         print(output)
 
+def qbt_tag_prefix(string):
+    #todo check for type?
+    string_b = bytes(string, "utf-8")
+    length_str_b = bytes(str(len(string_b)), "utf-8")
+    return length_str_b + b':' + string_b
+
 def clean_filename(filename):
     illegal_characters = '\\"/:<>?|'
     rem_ill_chars = str.maketrans(illegal_characters, '_' * len(illegal_characters))
@@ -98,27 +104,41 @@ def renameTorrent(torrent_info, target_file_info, new_filename):
         with open(fr, 'rb') as f:
             fastresume = f.read()
 
-        old_filename_relative = bytes('\\'.join(filter(None, [target_file_info.subpath, target_file_info.filename])), 'utf-8')
-        old_filename_relative_length = bytes(str(len(old_filename_relative)), "ascii")
-        old_bytes = old_filename_relative_length + b':' + old_filename_relative
+        old_filename_relative = target_file_info.getRelativeFilename()
+        old_bytes = qbt_tag_prefix(old_filename_relative)
 
         new_filename = clean_filename(new_filename)
-        new_filename_relative = bytes('\\'.join(filter(None, [target_file_info.subpath, new_filename])), 'utf-8')
-        new_filename_relative_length = bytes(str(len(new_filename_relative)), "ascii")
-        new_bytes = new_filename_relative_length + b':' + new_filename_relative
 
-        tag = b"12:mapped_filesl" #torrent file list prefix (last l character is not part of the tag string but assumably prefixes a list)
-        file_list_idx = fastresume.index(tag)+len(tag) #starting index of file list data
-        old_idx = fastresume.index(old_bytes, file_list_idx)
-        debug(f"Replacing \n{old_bytes}\nwith \n{new_bytes}\nat index {old_idx}")
-        fastresume = fastresume[:old_idx] + new_bytes + fastresume[old_idx+len(old_bytes):]
+        tag_mapped_files = qbt_tag_prefix("mapped_files") + b"l" #the l character is not part of the tag string but a list prefix
+
+        try:
+            idx_mapped_files = fastresume.index(tag_mapped_files)+len(tag_mapped_files) #starting index of file list data
+            new_filename_relative = target_file_info.getRelativeFilename(new_filename)
+            new_bytes = qbt_tag_prefix(new_filename_relative)
+            idx_old_bytes = fastresume.index(old_bytes, idx_mapped_files)
+            debug(f"Replacing \n{old_bytes}\nwith \n{new_bytes}\nat index {idx_old_bytes}")
+            fastresume = fastresume[:idx_old_bytes] + new_bytes + fastresume[idx_old_bytes+len(old_bytes):]
+        except ValueError:
+            tag_max_connections = qbt_tag_prefix("max_connections") #todo explain
+            idx_max_connections = fastresume.index(tag_max_connections)
+
+            new_bytes = tag_mapped_files
+            for x in range(len(torrent_info.files)):
+                if torrent_info.files[x].filename == target_file_info.filename:
+                    torrent_info.files[x].filename = new_filename
+                    new_bytes = new_bytes + qbt_tag_prefix(target_file_info.getRelativeFilename(new_filename))
+                else:
+                    new_bytes = new_bytes + qbt_tag_prefix(torrent_info.files[x].getRelativeFilename())
+            debug(f"Inserting \n{new_bytes}\n as the new filename at index {idx_max_connections}")
+            fastresume = fastresume[:idx_max_connections] + new_bytes + b'e' + fastresume[idx_max_connections:] #e indicates the end of the list
 
         #insert new filename as torrent name unless it's a batch torrent
         if len(torrent_info.files) == 1:
-            qbttag_name = b"8:qBt-name" #torrent title prefix
-            title_idx = fastresume.index(qbttag_name)+len(qbttag_name) #starting index of title data
-            old_title_length = int(fastresume[title_idx:fastresume.index(b':', title_idx)]) #figure out length of current title by parsing its prefixed number
-            fastresume = fastresume[:title_idx] + new_bytes + fastresume[title_idx+len(str(old_title_length))+1+old_title_length:]
+            qbttag_name = qbt_tag_prefix("qBt-name") #torrent title prefix
+            idx_name = fastresume.index(qbttag_name)+len(qbttag_name) #starting index of title data
+            new_name = qbt_tag_prefix(new_filename)
+            old_name_length = int(fastresume[idx_name:fastresume.index(b':', idx_name)]) #figure out length of current title by parsing its prefixed number
+            fastresume = fastresume[:idx_name] + new_name + fastresume[idx_name+len(str(old_name_length))+1+old_name_length:]
 
         try:
             os.rename('\\'.join(filter(None, [torrent_info.save_path, target_file_info.subpath, target_file_info.filename])), '\\'.join(filter(None, [torrent_info.save_path, target_file_info.subpath, new_filename])))
@@ -210,8 +230,8 @@ def tvdb_getSingleEpisode(tvdb_id, season, episodeNumber):
         
 def metadata_wizard(id, series_data):
     x_name = "Mob Psycho 100"
-    x_patternA = r"^\[HorribleSubs\] Mob Psycho 100 - (\d\d) \[720p\]\.mkv"
-    x_patternB = "Mob Psycho 100 - s\S\Se\E\E - [\A\A] \T - [2019 ENG-Sub AAC 720p HDTV x264 - HorribleSubs].mkv"
+    x_patternA = r"^\[HorribleSubs\] Mob Psycho 100 - (\d\d) \[1080p\]\.mkv"
+    x_patternB = "Mob Psycho 100 - s\S\Se\E\E - [\A\A] \T - [2019 ENG-Sub AAC 1080p x264 - HorribleSubs].mkv"
     
     sdata = {}
     patternA = ""
