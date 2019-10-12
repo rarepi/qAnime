@@ -108,12 +108,12 @@ def renameTorrent(torrent_info, target_file_info, new_filename):
         old_bytes = qbt_tag_prefix(old_filename_relative)
 
         new_filename = clean_filename(new_filename)
+        new_filename_relative = target_file_info.getRelativeFilename(new_filename)
 
         tag_mapped_files = qbt_tag_prefix("mapped_files") + b"l" #the l character is not part of the tag string but a list prefix
 
         try:
             idx_mapped_files = fastresume.index(tag_mapped_files)+len(tag_mapped_files) #starting index of file list data
-            new_filename_relative = target_file_info.getRelativeFilename(new_filename)
             new_bytes = qbt_tag_prefix(new_filename_relative)
             idx_old_bytes = fastresume.index(old_bytes, idx_mapped_files)
             debug(f"Replacing \n{old_bytes}\nwith \n{new_bytes}\nat index {idx_old_bytes}")
@@ -126,7 +126,7 @@ def renameTorrent(torrent_info, target_file_info, new_filename):
             for x in range(len(torrent_info.files)):
                 if torrent_info.files[x].filename == target_file_info.filename:
                     torrent_info.files[x].filename = new_filename
-                    new_bytes = new_bytes + qbt_tag_prefix(target_file_info.getRelativeFilename(new_filename))
+                    new_bytes = new_bytes + qbt_tag_prefix(new_filename_relative)
                 else:
                     new_bytes = new_bytes + qbt_tag_prefix(torrent_info.files[x].getRelativeFilename())
             debug(f"Inserting \n{new_bytes}\n as the new filename at index {idx_max_connections}")
@@ -141,11 +141,11 @@ def renameTorrent(torrent_info, target_file_info, new_filename):
             fastresume = fastresume[:idx_name] + new_name + fastresume[idx_name+len(str(old_name_length))+1+old_name_length:]
 
         try:
-            os.rename('\\'.join(filter(None, [torrent_info.save_path, target_file_info.subpath, target_file_info.filename])), '\\'.join(filter(None, [torrent_info.save_path, target_file_info.subpath, new_filename])))
-            print(f"Renamed {target_file_info.filename} to {new_filename}.")
+            os.rename('\\'.join(filter(None, [torrent_info.save_path, old_filename_relative])), '\\'.join(filter(None, [torrent_info.save_path, target_file_info.subpath, new_filename])))
+            print(f"Renamed {old_filename_relative} to {new_filename_relative}.")
         except OSError as e:
             print(e.strerror)
-            print('\\'.join(filter(None, [torrent_info.save_path, target_file_info.subpath, target_file_info.filename])))
+            print('\\'.join(filter(None, [torrent_info.save_path, old_filename_relative])))
             print("File renaming failed. No changes are being made.")
             break
         try:
@@ -156,7 +156,7 @@ def renameTorrent(torrent_info, target_file_info, new_filename):
             print(e.strerror)
             print("Failed to manipulate QBittorrent files. Reverting file rename...")
             try:
-                os.rename('\\'.join(filter(None, [torrent_info.save_path, target_file_info.subpath, new_filename])), '\\'.join(filter(None, [torrent_info.save_path, target_file_info.subpath, target_file_info.filename])))
+                os.rename('\\'.join(filter(None, [torrent_info.save_path, target_file_info.subpath, new_filename])), '\\'.join(filter(None, [torrent_info.save_path, old_filename_relative])))
                 print("File renaming reverted.")
             except OSError as e:
                 print(e.strerror)
