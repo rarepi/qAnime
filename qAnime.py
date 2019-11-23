@@ -9,7 +9,10 @@ import sys
 
 from structure.torrent import Torrent, File, Episode
 
-DEBUG_OUTPUT_ENABLED = True
+#0 = No debug output
+#1 = small stuff?
+#2 = full json data dumps
+DEBUG_OUTPUT_LEVEL = 2
 
 #TODO:
 #Input Evaluations
@@ -26,8 +29,8 @@ class TVDBEpisodeNumberNotInResult(Exception):
    """Raised when an episode number is not found in TVDB result"""
    pass
 
-def debug(output):
-    if DEBUG_OUTPUT_ENABLED:
+def debug(output, level):
+    if DEBUG_OUTPUT_LEVEL >= level:
         print(output)
 
 def qbt_tag_prefix(string):
@@ -116,7 +119,7 @@ def renameTorrent(torrent_info, target_file_info, new_filename):
             idx_mapped_files = fastresume.index(tag_mapped_files)+len(tag_mapped_files) #starting index of file list data
             new_bytes = qbt_tag_prefix(new_filename_relative)
             idx_old_bytes = fastresume.index(old_bytes, idx_mapped_files)
-            debug(f"Replacing \n{old_bytes}\nwith \n{new_bytes}\nat index {idx_old_bytes}")
+            debug(f"Replacing \n{old_bytes}\nwith \n{new_bytes}\nat index {idx_old_bytes}", 1)
             fastresume = fastresume[:idx_old_bytes] + new_bytes + fastresume[idx_old_bytes+len(old_bytes):]
         except ValueError:
             tag_max_connections = qbt_tag_prefix("max_connections") #todo explain
@@ -129,7 +132,7 @@ def renameTorrent(torrent_info, target_file_info, new_filename):
                     new_bytes = new_bytes + qbt_tag_prefix(new_filename_relative)
                 else:
                     new_bytes = new_bytes + qbt_tag_prefix(torrent_info.files[x].getRelativeFilename())
-            debug(f"Inserting \n{new_bytes}\n as the new filename at index {idx_max_connections}")
+            debug(f"Inserting \n{new_bytes}\n as the new filename at index {idx_max_connections}", 1)
             fastresume = fastresume[:idx_max_connections] + new_bytes + b'e' + fastresume[idx_max_connections:] #e indicates the end of the list
 
         #insert new filename as torrent name unless it's a batch torrent
@@ -191,9 +194,15 @@ def tvdb_getSeries(name):
     if type(json_data) is dict:
         series_options = {}
         i = 0
+        debug(f"json data: {json_data['data']}", 2)
         for item in json_data['data']:
             series_options[i] = (str(item['id']), item['seriesName'])
-            print(str(i) + ") " + series_options[i][1] + " (" + item['network'] + ")")
+
+            if isinstance(item['network'], str): #network can be None
+                print(str(i) + ") " + series_options[i][1] + " (" + item['network'] + ")")
+            else:
+                print(f"{str(i)}) {series_options[i][1]}")
+
             i+=1
         while True:
             index = numericInput("Choose the correct series by index.\n>> ")
