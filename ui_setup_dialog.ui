@@ -1,0 +1,123 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>setup_dialog</class>
+ <widget class="QDialog" name="setup_dialog">
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>800</width>
+    <height>300</height>
+   </rect>
+  </property>
+  <property name="sizePolicy">
+   <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
+    <horstretch>0</horstretch>
+    <verstretch>0</verstretch>
+   </sizepolicy>
+  </property>
+  <property name="windowTitle">
+   <string>Dialog</string>
+  </property>
+  <layout class="QVBoxLayout" name="verticalLayout_3">
+   <item>
+    <layout class="QVBoxLayout" name="v_layout_absolute_path">
+     <item>
+      <widget class="QLabel" name="label_absolute_path">
+       <property name="text">
+        <string>Absolute path for the QBittorrent executable.</string>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QLineEdit" name="ledit_absolute_path"/>
+     </item>
+    </layout>
+   </item>
+   <item>
+    <layout class="QVBoxLayout" name="v_layout_qbt_url">
+     <item>
+      <widget class="QLabel" name="label_qbt_url">
+       <property name="text">
+        <string>URL to your QBittorrent Web API</string>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QLineEdit" name="ledit_qbt_url">
+       <property name="text">
+        <string>http://localhost:8080/api/v2</string>
+       </property>
+      </widget>
+     </item>
+    </layout>
+   </item>
+   <item>
+    <layout class="QVBoxLayout" name="v_layout_qbt_login">
+     <item>
+      <widget class="QLabel" name="label_qbt_login">
+       <property name="text">
+        <string>QBittorrent Web UI Login</string>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <layout class="QHBoxLayout" name="h_layout_qbt_login">
+       <item>
+        <widget class="QLineEdit" name="ledit_qbt_user"/>
+       </item>
+       <item>
+        <widget class="QLineEdit" name="ledit_qbt_password"/>
+       </item>
+      </layout>
+     </item>
+    </layout>
+   </item>
+   <item>
+    <layout class="QVBoxLayout" name="v_layout_tvdb_url">
+     <item>
+      <widget class="QLabel" name="label_tvdb_url">
+       <property name="text">
+        <string>URL to the TheTVDB.com API</string>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QLineEdit" name="ledit_tvdb_url">
+       <property name="text">
+        <string>https://api.thetvdb.com</string>
+       </property>
+      </widget>
+     </item>
+    </layout>
+   </item>
+   <item>
+    <layout class="QVBoxLayout" name="v_layout_tvdb_key">
+     <item>
+      <widget class="QLabel" name="label_tvdb_key">
+       <property name="text">
+        <string>TheTVDB.com API Key</string>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QLineEdit" name="ledit_tvdb_key">
+       <property name="text">
+        <string>2323B61F3A9DA8C8</string>
+       </property>
+      </widget>
+     </item>
+    </layout>
+   </item>
+   <item>
+    <widget class="QPushButton" name="btn_confirm">
+     <property name="text">
+      <string>OK</string>
+     </property>
+    </widget>
+   </item>
+  </layout>
+ </widget>
+ <resources/>
+ <connections/>
+</ui>

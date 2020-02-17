@@ -7,3 +7,4 @@ __pycache__
 *.bat
 *_old.py
 *.code-workspace
+.idea

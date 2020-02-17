@@ -75,3 +75,38 @@ Traceback (most recent call last):
     seasonNumber = episode_json_data['airedSeason']
 TypeError: 'NoneType' object is not subscriptable
 PS E:\Dev\qAnime>
+
+
+
+
+
+
+
+
+
+
+
+What to do?
+>> 1
+Fetching torrent 517/517
+Fetching done.
+ERFOLGREICH: Ein Beendigungssignal wurde an den Prozess
+"qbittorrent.exe" mit der PID 19368 geschickt.
+Waiting for QBittorrent to terminate... (1s)
+QBittorrent has been terminated.
+Rename this?
+W:\Anime\Series\One Piece\S21\[HorribleSubs] One Piece - 912 [720p].mkv
+>> y
+TVDB Episode Fetch Response Status Code:  404
+TVDB Episode Fetch Response:  {"Error":"No results for your query: map[Absolute_number:912]"}
+Traceback (most recent call last):
+  File "e:/Dev/qAnime/qAnime.py", line 547, in <module>
+    main()
+  File "e:/Dev/qAnime/qAnime.py", line 529, in main
+    actionRenameScan(series_data)
+  File "e:/Dev/qAnime/qAnime.py", line 416, in actionRenameScan
+    filename_new = patternWizard(tvdb_id, season, patternA, patternB, file_info.filename)
+  File "e:/Dev/qAnime/qAnime.py", line 349, in patternWizard
+    seasonNumber = episode_json_data['airedSeason']
+TypeError: 'NoneType' object is not subscriptable
+PS E:\Dev\qAnime>

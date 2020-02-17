@@ -9,16 +9,16 @@ import sys
 
 from structure.torrent import Torrent, File, Episode
 
-#0 = No debug output
-#1 = small stuff?
-#2 = full json data dumps
-DEBUG_OUTPUT_LEVEL = 2
-
 #TODO:
 #Input Evaluations
 #remove by pattern in series, not just by series
 #same patternA may not be in two seasons
 #editing: asking for season after editing?
+
+#0 = No debug output
+#1 = small stuff?
+#2 = full json data dumps
+DEBUG_OUTPUT_LEVEL = 2
 
 series_data_file = "./data.json"
 settings_file = "./settings.json"
