@@ -33,6 +33,7 @@ class Torrent():
         self.save_path = save_path
         self.files = []
         self.name = name
+        self.name_new = None
 
     def setSavePath(self, save_path):
         if save_path[-1] == '\\':   #remove trailing backslash
