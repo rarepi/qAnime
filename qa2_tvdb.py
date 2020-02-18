@@ -13,11 +13,6 @@ from PySide2.QtCore import QThread, Signal, QTimer, Slot, QEventLoop, QObject, Q
 # 2 = full json data dumps
 DEBUG_OUTPUT_LEVEL = 2
 
-SERIES_DATA_FILE = "./data.json"
-SETTINGS_FILE = "./settings.json"
-os.makedirs(os.path.dirname(SERIES_DATA_FILE), exist_ok=True)
-os.makedirs(os.path.dirname(SETTINGS_FILE), exist_ok=True)
-
 
 class TVDBEpisodeNumberNotInResult(Exception):
     """Raised when an episode number is not found in TVDB result"""

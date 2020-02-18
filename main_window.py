@@ -8,8 +8,10 @@ import time
 import sys
 
 from PySide2.QtCore import QTimer, Qt, Slot, QThreadPool
-from PySide2.QtWidgets import QApplication, QMainWindow, QProgressBar, QDialog, QTableWidgetItem, QHeaderView
-from qAnime2 import FileFetcher
+from PySide2.QtWidgets import QApplication, QMainWindow, QProgressBar, QDialog, QTableWidgetItem, QHeaderView, \
+    QCheckBox, QHBoxLayout, QWidget, QTreeWidgetItem
+from QTorrentWidgets import QTorrentTreeWidget
+from qAnime2 import RenameWorker, FileFetcher
 from qa2_tvdb import TVDBHandler
 
 from ui_main_window import Ui_MainWindow
@@ -55,18 +57,31 @@ class MainWindow(QMainWindow):
         self.ui.setupUi(self)
         self.file_fetcher = None
 
-        self.ui.table.insertColumn(0)
-        self.ui.table.insertColumn(1)
-        self.ui.table.setHorizontalHeaderItem(0, QTableWidgetItem("Old File"))
-        self.ui.table.setHorizontalHeaderItem(1, QTableWidgetItem("New File"))
-        self.ui.table.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
-        self.ui.table.horizontalHeader().setSectionResizeMode(1, QHeaderView.Stretch)
+        # Ugly workaround. Python doesn't allow casting the Qt Designer's QTreeWidget to QTorrentTreeWidget, so we have to rebuild it.
+        old_tree_torrents = self.ui.tree_torrents
+        self.ui.tree_torrents = QTorrentTreeWidget(self.ui.central_widget)
+        self.ui.vlayout_table.replaceWidget(old_tree_torrents, self.ui.tree_torrents)
+        old_tree_torrents.deleteLater()
+
+        self.ui.tree_torrents.setColumnCount(3)
+        header = QTreeWidgetItem()
+        header.setText(0, "Old Name")
+        header.setText(1, "New Name")
+        header.setText(2, "")
+        self.ui.tree_torrents.setHeaderItem(header)
+        self.ui.tree_torrents.setColumnCount(3)
+        self.ui.tree_torrents.header().setStretchLastSection(False);
+        self.ui.tree_torrents.header().setSectionResizeMode(0, QHeaderView.Stretch)
+        self.ui.tree_torrents.header().setSectionResizeMode(1, QHeaderView.Stretch)
+        self.ui.tree_torrents.header().setSectionResizeMode(2, QHeaderView.ResizeToContents)
+        self.ui.tree_torrents.header().setDefaultAlignment(Qt.AlignCenter)
 
         self.progress_bar = QProgressBar(self.ui.statusbar)
         self.progress_bar.setAlignment(Qt.AlignRight)
         self.progress_bar.setMaximumSize(180, 19)
         self.ui.statusbar.addPermanentWidget(self.progress_bar)
         self.ui.button_scan.clicked.connect(self.rename_scan)
+        self.ui.button_confirm_rename.clicked.connect(self.rename_confirm)
 
         self.settings = {}
 
@@ -78,26 +93,9 @@ class MainWindow(QMainWindow):
         if isinstance(progress, int):
             self.progress_bar.setValue(progress)
 
-    @Slot(tuple)
-    def append_rename_data(self, data):
-        absolute_filename_old = None
-        absolute_filename_new = None
-        if isinstance(data, tuple) and len(data) == 4 \
-                and isinstance(data[0], str) and isinstance(data[1], str) \
-                and isinstance(data[2], str) and isinstance(data[3], str):
-            # absolute_filename_old = '\\'.join(filter(None, [data[0], data[1], data[2]]))
-            # absolute_filename_new = '\\'.join(filter(None, [data[0], data[1], data[3]]))
-            absolute_filename_old = '\\'.join(filter(None, [data[1], data[2]]))
-            absolute_filename_new = '\\'.join(filter(None, [data[1], data[3]]))
-        else:
-            print("Unexpected data. Got '" + str(data) + "' (" + str(type(data)) + ")")
-
-        # append file paths to table
-        row = self.ui.table.rowCount()
-        self.ui.table.insertRow(row)
-        self.ui.table.setItem(row, 0, QTableWidgetItem(absolute_filename_old))
-        self.ui.table.setItem(row, 1, QTableWidgetItem(absolute_filename_new))
-        print("Appended to table: " + self.ui.table.item(row, 0).text() + " and " + self.ui.table.item(row, 1).text())
+    @Slot(Torrent)
+    def append_rename_data(self, torrent):
+        self.ui.tree_torrents.add_torrent(torrent)
 
     def rename_scan(self):
         self.file_fetcher = FileFetcher(self.settings)
@@ -105,6 +103,14 @@ class MainWindow(QMainWindow):
         self.file_fetcher.qbt_handler.update_progress.connect(self.set_progress_bar)
         self.file_fetcher.signals.rename_scan_result.connect(self.append_rename_data)
         self.file_fetcher.start()
+
+    def rename_confirm(self):
+        items = []
+        for i in range(self.ui.tree_torrents.rowCount()-1):
+            items.append(self.ui.tree_torrents.item(i, 1))
+
+        renamer = RenameWorker(self.settings)
+
 
     def startup(self):
         try:

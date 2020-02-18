@@ -57,10 +57,23 @@ class Ui_MainWindow(object):
 
         self.horizontalLayout.addLayout(self.vlayout_buttons);
 
-        self.table = QTableWidget(self.central_widget)
-        self.table.setObjectName(u"table")
+        self.vlayout_table = QVBoxLayout();
+        self.vlayout_table.setObjectName(u"vlayout_table")
+        self.tree_torrents = QTreeWidget(self.central_widget)
+        __qtreewidgetitem = QTreeWidgetItem()
+        __qtreewidgetitem.setText(0, u"1");
+        self.tree_torrents.setHeaderItem(__qtreewidgetitem)
+        self.tree_torrents.setObjectName(u"tree_torrents")
 
-        self.horizontalLayout.addWidget(self.table);
+        self.vlayout_table.addWidget(self.tree_torrents);
+
+        self.button_confirm_rename = QPushButton(self.central_widget)
+        self.button_confirm_rename.setObjectName(u"button_confirm_rename")
+
+        self.vlayout_table.addWidget(self.button_confirm_rename);
+
+
+        self.horizontalLayout.addLayout(self.vlayout_table);
 
         MainWindow.setCentralWidget(self.central_widget)
         self.menubar = QMenuBar(MainWindow)
@@ -82,5 +95,6 @@ class Ui_MainWindow(object):
         self.button_scan.setText(QCoreApplication.translate("MainWindow", u"Scan", None))
         self.button_add.setText(QCoreApplication.translate("MainWindow", u"Add", None))
         self.button_edit.setText(QCoreApplication.translate("MainWindow", u"Edit", None))
+        self.button_confirm_rename.setText(QCoreApplication.translate("MainWindow", u"Confirm rename", None))
     # retranslateUi
 

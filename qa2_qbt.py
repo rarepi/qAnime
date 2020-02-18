@@ -1,13 +1,8 @@
 import requests
 import json
 import os
-import subprocess
-import re  # regex
-import psutil
-import time
-import sys
 
-from PySide2.QtCore import QThread, Signal, QTimer, QObject
+from PySide2.QtCore import Signal, QObject
 
 from structure.torrent import Torrent, File, Episode
 
@@ -15,11 +10,6 @@ from structure.torrent import Torrent, File, Episode
 # 1 = small stuff?
 # 2 = full json data dumps
 DEBUG_OUTPUT_LEVEL = 2
-
-SERIES_DATA_FILE = "./data.json"
-SETTINGS_FILE = "./settings.json"
-os.makedirs(os.path.dirname(SERIES_DATA_FILE), exist_ok=True)
-os.makedirs(os.path.dirname(SETTINGS_FILE), exist_ok=True)
 
 
 def debug(output, level):
@@ -73,7 +63,7 @@ class QBTHandler(QObject):
             self.init_progress.emit(index, len(json_data))
             while index < len(json_data):
                 if json_data[index]['progress'] == 1.0:
-                    torrent = Torrent(json_data[index]['hash'])
+                    torrent = Torrent(json_data[index]['name'], json_data[index]['hash'])
                     torrent.fetchFiles(self.settings["qbt_url"], self.cookie)
                     torrents.append(torrent)
                 index += 1

@@ -9,7 +9,6 @@ import sys
 from threading import Thread
 
 from PySide2.QtCore import QThread, Signal, QTimer, Slot, QEventLoop, QObject, QRunnable
-
 from qa2_qbt import QBTHandler
 from qa2_tvdb import TVDBHandler
 
@@ -52,189 +51,6 @@ def clean_filename(filename):
     illegal_characters = '\\"/:<>?|'
     rem_ill_chars = str.maketrans(illegal_characters, '_' * len(illegal_characters))
     return filename.translate(rem_ill_chars)
-
-
-def get_qbt_version():
-    version = requests.get(settings["qbt_url"] + '/app/version', cookies=qbt_cookie.cookies)
-    return version.text
-
-
-def fetch_torrents():
-    # https://github.com/qbittorrent/qBittorrent/wiki/Web-API-Documentation#get-torrent-list
-    options = {'sort': 'name'}
-    result = requests.get(settings["qbt_url"] + '/torrents/info', cookies=qbt_cookie.cookies, params=options)
-
-    torrents = []
-    try:
-        json_data = result.json()
-        counter = 0
-        index = 0
-        while index < len(json_data):
-            counter += 1
-            print("Fetching torrent " + str(counter) + "/" + str(len(json_data)), end="\r")  # todo: link this to UI progress bar
-            sys.stdout.flush()
-            if json_data[index]['progress'] == 1.0:
-                torrent = Torrent(json_data[index]['hash'])
-                torrent.fetchFiles(settings["qbt_url"], qbt_cookie)
-                torrents.append(torrent)
-            index += 1
-        print('\nFetching done.')
-    except json.decoder.JSONDecodeError:
-        print("ERROR: QBittorrent returned an invalid torrent list.")
-        print("Cookies:", qbt_cookie.cookies)
-        print("Response Status Code:", result.status_code)
-        print('Response Text: ', result.text)
-    return torrents
-
-
-def rename_torrent(torrent_info, target_file_info, new_filename):
-    """
-    Renames a torrent and its files and manipulates the QBittorrent fastresume file accordingly.
-    """
-    while True:  # using break in exceptions - why not return though? gotta take a closer look at this later on
-
-        # QBittorrent's fastresume files are used at startup to quickly load up any torrents known to it.
-        # Right now, renaming of files is not supported via Web API so instead we edit the fastresume files while the Application is closed.
-        # Data can be located by certain tags such as "qBt-name" and any form of string is prefixed with its length and a colon.
-        # e.g.: The filename "One Piece e300.mp4" would be stored as "18:One Piece e300.mp4". Apparently, unicode characters are still counted as only one character.
-        fr = os.path.expandvars("%LOCALAPPDATA%/qBittorrent/BT_backup/") + torrent_info.hash + ".fastresume"
-        with open(fr, 'rb') as f:
-            fastresume = f.read()
-
-        old_filename_relative = target_file_info.getRelativeFilename()
-        old_bytes = qbt_tag_prefix(old_filename_relative)
-
-        new_filename = clean_filename(new_filename)
-        new_filename_relative = target_file_info.getRelativeFilename(new_filename)
-
-        tag_mapped_files = qbt_tag_prefix("mapped_files") + b"l"  # the l character is not part of the tag string but a list prefix
-
-        try:
-            idx_mapped_files = fastresume.index(tag_mapped_files) + len(tag_mapped_files)  # starting index of file list data
-            new_bytes = qbt_tag_prefix(new_filename_relative)
-            idx_old_bytes = fastresume.index(old_bytes, idx_mapped_files)
-            debug(f"Replacing \n{old_bytes}\nwith \n{new_bytes}\nat index {idx_old_bytes}", 1)
-            fastresume = fastresume[:idx_old_bytes] + new_bytes + fastresume[idx_old_bytes + len(old_bytes):]
-        except ValueError:
-            tag_max_connections = qbt_tag_prefix("max_connections")  # todo explain
-            idx_max_connections = fastresume.index(tag_max_connections)
-
-            new_bytes = tag_mapped_files
-            for x in range(len(torrent_info.files)):
-                if torrent_info.files[x].filename == target_file_info.filename:
-                    torrent_info.files[x].filename = new_filename
-                    new_bytes = new_bytes + qbt_tag_prefix(new_filename_relative)
-                else:
-                    new_bytes = new_bytes + qbt_tag_prefix(torrent_info.files[x].getRelativeFilename())
-            debug(f"Inserting \n{new_bytes}\n as the new filename at index {idx_max_connections}", 1)
-            fastresume = fastresume[:idx_max_connections] + new_bytes + b'e' + fastresume[idx_max_connections:]  # e indicates the end of the list
-
-        # insert new filename as torrent name unless it's a batch torrent
-        if len(torrent_info.files) == 1:
-            qbttag_name = qbt_tag_prefix("qBt-name")  # torrent title prefix
-            idx_name = fastresume.index(qbttag_name) + len(qbttag_name)  # starting index of title data
-            new_name = qbt_tag_prefix(new_filename)
-            old_name_length = int(fastresume[idx_name:fastresume.index(b':', idx_name)])  # figure out length of current title by parsing its prefixed number
-            fastresume = fastresume[:idx_name] + new_name + fastresume[idx_name + len(str(old_name_length)) + 1 + old_name_length:]
-
-        try:
-            os.rename('\\'.join(filter(None, [torrent_info.save_path, old_filename_relative])),
-                      '\\'.join(filter(None, [torrent_info.save_path, target_file_info.subpath, new_filename])))
-            print(f"Renamed {old_filename_relative} to {new_filename_relative}.")
-        except OSError as e:
-            print(e.strerror)
-            print('\\'.join(filter(None, [torrent_info.save_path, old_filename_relative])))
-            print("File renaming failed. No changes are being made.")
-            break
-        try:
-            with open(fr, 'wb') as f:
-                f.write(fastresume)
-            print("QBittorrent files have been manipulated accordingly.")
-        except OSError as e:
-            print(e.strerror)
-            print("Failed to manipulate QBittorrent files. Reverting file rename...")
-            try:
-                os.rename('\\'.join(filter(None, [torrent_info.save_path, target_file_info.subpath, new_filename])),
-                          '\\'.join(filter(None, [torrent_info.save_path, old_filename_relative])))
-                print("File renaming reverted.")
-            except OSError as e:
-                print(e.strerror)
-                print("Failed to revert renaming of file.")
-                break
-        break
-
-
-def tvdb_auth():
-    global tvdb_auth
-    auth = {"apikey": settings["tvdb_apikey"]}
-
-    result = requests.post(settings["tvdb_url"] + '/login', json=auth)
-    if result.status_code != 200:
-        print('TVDB AUTHENTICATION FAILED')
-        print('TVDB Auth Response Status Code: ', result.status_code)
-        print('TVDB Auth Response: ', result.text)
-    else:
-        tvdb_auth = result.json()['token']
-
-
-def tvdb_get_series(name):
-    head = {"Authorization": "Bearer " + tvdb_auth, "Accept-Language": "en", "content-type": "application/json"}
-    data = {'name': name}
-    result = requests.get(settings["tvdb_url"] + '/search/series', headers=head, params=data)
-    if result.status_code == 404:
-        print("TheTVDB.com was unable to find a series using the specified name. Try a different name.")
-        return {}
-    elif result.status_code != 200:
-        print('TVDB Series Fetch Response Status Code: ', result.status_code)
-        print('TVDB Series Fetch Response: ', result.text)
-        return {}
-    json_data = result.json()
-    if type(json_data) is dict:
-        series_options = {}
-        i = 0
-        debug(f"json data: {json_data['data']}", 2)
-        for item in json_data['data']:
-            series_options[i] = (str(item['id']), item['seriesName'])
-
-            if isinstance(item['network'], str):  # network can be None
-                print(str(i) + ") " + series_options[i][1] + " (" + item['network'] + ")")
-            else:
-                print(f"{str(i)}) {series_options[i][1]}")
-
-            i += 1
-        while True:
-            index = input_int("Choose the correct series by index.\n>> ")
-            try:
-                print(
-                    "You picked \"" + series_options[index][1] + "\". TheTVDB ID is " + series_options[index][0] + ".")
-            except KeyError:
-                print("Invalid input.")
-                continue
-            break
-
-        return series_options[index]
-
-
-def tvdb_get_single_episode(tvdb_id, season, episode_number):
-    head = {"Authorization": "Bearer " + tvdb_auth, "Accept-Language": "en", "content-type": "application/json"}
-    data = {}
-    if season == "-1":
-        data = {'absoluteNumber': episode_number}
-    else:
-        episode_number = episode_number.lstrip('0')  # episode number CAN be 0
-        if not episode_number:  # empty strings are false
-            episode_number = "0"
-        data = {'airedSeason': season, 'airedEpisodeNumber': episode_number}
-    result = requests.get(settings["tvdb_url"] + '/series/' + tvdb_id + '/episodes/query', headers=head, params=data)
-    if result.status_code != 200:
-        print("TVDB Episode Fetch Response Status Code: ", result.status_code)
-        print("TVDB Episode Fetch Response: ", result.text)
-        return
-
-    for item in result.json()['data']:
-        if season != "-1" and item['airedEpisodeNumber'] == int(episode_number) and item['airedSeason'] == int(season) or season == "-1" and item['absoluteNumber'] == int(episode_number):
-            return item
-    raise TVDBEpisodeNumberNotInResult
 
 
 def metadata_wizard(tvdb_id, series_data):
@@ -381,8 +197,95 @@ def read_series_data():
     return series_data
 
 
+class RenameWorker(QThread):
+    def __init__(self, settings, parent=None):
+        QThread.__init__(self, parent)
+        self.settings = settings
+
+    def rename_torrent(self, torrent_info, target_file_info, new_filename):
+        """
+        Renames a torrent and its files and manipulates the QBittorrent fastresume file accordingly.
+        """
+        while True:  # using break in exceptions - why not return though? gotta take a closer look at this later on
+
+            # QBittorrent's fastresume files are used at startup to quickly load up any torrents known to it.
+            # Right now, renaming of files is not supported via Web API so instead we edit the fastresume files while the Application is closed.
+            # Data can be located by certain tags such as "qBt-name" and any form of string is prefixed with its length and a colon.
+            # e.g.: The filename "One Piece e300.mp4" would be stored as "18:One Piece e300.mp4". Apparently, unicode characters are still counted as only one character.
+            fr = os.path.expandvars("%LOCALAPPDATA%/qBittorrent/BT_backup/") + torrent_info.hash + ".fastresume"
+            with open(fr, 'rb') as f:
+                fastresume = f.read()
+
+            old_filename_relative = target_file_info.getRelativeFilename()
+            old_bytes = qbt_tag_prefix(old_filename_relative)
+
+            new_filename = clean_filename(new_filename)
+            new_filename_relative = target_file_info.getRelativeFilename(new_filename)
+
+            tag_mapped_files = qbt_tag_prefix(
+                "mapped_files") + b"l"  # the l character is not part of the tag string but a list prefix
+
+            try:
+                idx_mapped_files = fastresume.index(tag_mapped_files) + len(
+                    tag_mapped_files)  # starting index of file list data
+                new_bytes = qbt_tag_prefix(new_filename_relative)
+                idx_old_bytes = fastresume.index(old_bytes, idx_mapped_files)
+                debug(f"Replacing \n{old_bytes}\nwith \n{new_bytes}\nat index {idx_old_bytes}", 1)
+                fastresume = fastresume[:idx_old_bytes] + new_bytes + fastresume[idx_old_bytes + len(old_bytes):]
+            except ValueError:
+                tag_max_connections = qbt_tag_prefix("max_connections")  # todo explain
+                idx_max_connections = fastresume.index(tag_max_connections)
+
+                new_bytes = tag_mapped_files
+                for x in range(len(torrent_info.files)):
+                    if torrent_info.files[x].filename == target_file_info.filename:
+                        torrent_info.files[x].filename = new_filename
+                        new_bytes = new_bytes + qbt_tag_prefix(new_filename_relative)
+                    else:
+                        new_bytes = new_bytes + qbt_tag_prefix(torrent_info.files[x].getRelativeFilename())
+                debug(f"Inserting \n{new_bytes}\n as the new filename at index {idx_max_connections}", 1)
+                fastresume = fastresume[:idx_max_connections] + new_bytes + b'e' + fastresume[
+                                                                                   idx_max_connections:]  # e indicates the end of the list
+
+            # insert new filename as torrent name unless it's a batch torrent
+            if len(torrent_info.files) == 1:
+                qbttag_name = qbt_tag_prefix("qBt-name")  # torrent title prefix
+                idx_name = fastresume.index(qbttag_name) + len(qbttag_name)  # starting index of title data
+                new_name = qbt_tag_prefix(new_filename)
+                old_name_length = int(fastresume[idx_name:fastresume.index(b':',
+                                                                           idx_name)])  # figure out length of current title by parsing its prefixed number
+                fastresume = fastresume[:idx_name] + new_name + fastresume[idx_name + len(
+                    str(old_name_length)) + 1 + old_name_length:]
+
+            try:
+                os.rename('\\'.join(filter(None, [torrent_info.save_path, old_filename_relative])),
+                          '\\'.join(filter(None, [torrent_info.save_path, target_file_info.subpath, new_filename])))
+                print(f"Renamed {old_filename_relative} to {new_filename_relative}.")
+            except OSError as e:
+                print(e.strerror)
+                print('\\'.join(filter(None, [torrent_info.save_path, old_filename_relative])))
+                print("File renaming failed. No changes are being made.")
+                break
+            try:
+                with open(fr, 'wb') as f:
+                    f.write(fastresume)
+                print("QBittorrent files have been manipulated accordingly.")
+            except OSError as e:
+                print(e.strerror)
+                print("Failed to manipulate QBittorrent files. Reverting file rename...")
+                try:
+                    os.rename('\\'.join(filter(None, [torrent_info.save_path, target_file_info.subpath, new_filename])),
+                              '\\'.join(filter(None, [torrent_info.save_path, old_filename_relative])))
+                    print("File renaming reverted.")
+                except OSError as e:
+                    print(e.strerror)
+                    print("Failed to revert renaming of file.")
+                    break
+            break
+
+
 class FileFetcherSignals(QObject):
-    rename_scan_result = Signal(tuple)
+    rename_scan_result = Signal(Torrent)
 
 
 class FileFetcher(QThread):
@@ -421,6 +324,7 @@ class FileFetcher(QThread):
     def action_rename_scan(self):
         # check all files by regex in our series data
         for torrent_info in self.torrents:
+            irrelevant = True
             rename_whole_batch = False
             for file_info in torrent_info.files:
                 if file_info.priority == 0:  # skip ignored files
@@ -429,17 +333,33 @@ class FileFetcher(QThread):
                     for season, patterns in data['patterns'].items():
                         for patternA, patternB in patterns.items():
                             pattern = re.compile(patternA)
-                            if pattern.match(file_info.filename):
-                                # self.signals.rename_scan_result.emit('\\'.join(filter(None, [torrent_info.save_path, file_info.subpath, file_info.filename])))
-                                save_path = torrent_info.save_path
-                                subpath = file_info.subpath
-                                filename_old = file_info.filename
-                                filename_new = self.pattern_wizard(tvdb_id, season, patternA, patternB, file_info.filename)
-                                print('\\'.join(filter(None, [torrent_info.save_path, file_info.subpath, filename_old])))
-                                print('\\'.join(filter(None, [torrent_info.save_path, file_info.subpath, filename_new])))
-                                data = (save_path, subpath, filename_old, filename_new)
-                                print("Sending " + str(type(data)) + ": " + str(data))
-                                self.signals.rename_scan_result.emit(data)
+                            if pattern.match(file_info.filename):   # send whole torrent to GUI, but first generate new names. also need to handle not matching files like .nfo files and shit like that. (ignore files without new filenames?)
+                                file_info.filename_new = self.pattern_wizard(tvdb_id, season, patternA, patternB, file_info.filename)
+                                irrelevant = False
+            if not irrelevant:
+                self.signals.rename_scan_result.emit(torrent_info)
+
+
+
+        # check all files by regex in our series data
+        # for torrent_info in self.torrents:
+        #     torrent_item = QTorrentTreeWidgetItem()
+        #     rename_whole_batch = False
+        #     for file_info in torrent_info.files:
+        #         if file_info.priority == 0:  # skip ignored files
+        #             continue
+        #         for tvdb_id, data in self.series_data.items():
+        #             for season, patterns in data['patterns'].items():
+        #                 for patternA, patternB in patterns.items():
+        #                     pattern = re.compile(patternA)
+        #                     if pattern.match(file_info.filename):
+        #                         # self.signals.rename_scan_result.emit('\\'.join(filter(None, [torrent_info.save_path, file_info.subpath, file_info.filename])))
+        #                         save_path = torrent_info.save_path
+        #                         subpath = file_info.subpath
+        #                         filename_old = file_info.filename
+        #                         filename_new = self.pattern_wizard(tvdb_id, season, patternA, patternB, file_info.filename)
+        #                         data = (save_path, subpath, filename_old, filename_new)
+        #                         self.signals.rename_scan_result.emit(data)
 
 
                             #     if rename_whole_batch or input_bool("Rename this?\n{}\n>> ".format('\\'.join(filter(None, [torrent_info.save_path, file_info.subpath, file_info.filename])))):

@@ -66,7 +66,24 @@
      </layout>
     </item>
     <item>
-     <widget class="QTableWidget" name="table"/>
+     <layout class="QVBoxLayout" name="vlayout_table">
+      <item>
+       <widget class="QTreeWidget" name="tree_torrents">
+        <column>
+         <property name="text">
+          <string notr="true">1</string>
+         </property>
+        </column>
+       </widget>
+      </item>
+      <item>
+       <widget class="QPushButton" name="button_confirm_rename">
+        <property name="text">
+         <string>Confirm rename</string>
+        </property>
+       </widget>
+      </item>
+     </layout>
     </item>
    </layout>
   </widget>
