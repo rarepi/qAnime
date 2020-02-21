@@ -105,11 +105,8 @@ class MainWindow(QMainWindow):
         self.file_fetcher.start()
 
     def rename_confirm(self):
-        items = []
-        for i in range(self.ui.tree_torrents.rowCount()-1):
-            items.append(self.ui.tree_torrents.item(i, 1))
-
         renamer = RenameWorker(self.settings)
+        renamer.rename_torrents(self.ui.tree_torrents)
 
 
     def startup(self):

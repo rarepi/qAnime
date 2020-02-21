@@ -52,7 +52,10 @@ class QTorrentTreeWidget(QTreeWidget):
         if len(torrent.files) >= 1:
             for file in torrent.files:
                 f_widget = QTorrentTreeWidgetFile(file, t_widget)
-                f_widget.setCheckState(2, Qt.Checked)
+                if file.filename_new:
+                    f_widget.setCheckState(2, Qt.Checked)
+                else:
+                    f_widget.setCheckState(2, Qt.Unchecked)
                 t_widget.addChild(f_widget)
 
     @Slot(QTreeWidgetItem, int)
@@ -70,3 +73,6 @@ class QTorrentTreeWidget(QTreeWidget):
             item.value_change(item.text(column))
         if column == 2:
             item.checked = bool(item.checkState(column))
+
+    def topLevelItem(self, index) -> QTorrentTreeWidgetTorrent:
+        return super().topLevelItem(index)
