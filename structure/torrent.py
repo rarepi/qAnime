@@ -1,7 +1,5 @@
 import requests
-import os
 
-from .episode import Episode
 
 class File():
     """File"""

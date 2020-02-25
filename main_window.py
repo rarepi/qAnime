@@ -1,38 +1,27 @@
-import requests
 import json
 import os
-import subprocess
-import re  # regex
-import psutil
-import time
 import sys
 
-from PySide2.QtCore import QTimer, Qt, Slot, QThreadPool
-from PySide2.QtWidgets import QApplication, QMainWindow, QProgressBar, QDialog, QTableWidgetItem, QHeaderView, \
-    QCheckBox, QHBoxLayout, QWidget, QTreeWidgetItem
+from PySide2.QtCore import Qt, Slot
+from PySide2.QtWidgets import QApplication, QMainWindow, QProgressBar, QDialog, QHeaderView, \
+    QTreeWidgetItem
+
+import qAnime2
 from QTorrentWidgets import QTorrentTreeWidget
+from SeriesDataHandler import SeriesDataHandler
+from dialog.SeriesSelection import SeriesSelection
+from dialog.PatternEditor import PatternEditor
+from dialog.RegexBuilder import RegexBuilder
 from qAnime2 import RenameWorker, FileFetcher
-from qa2_tvdb import TVDBHandler
-
-from ui_main_window import Ui_MainWindow
-from ui_setup_dialog import Ui_setup_dialog
-from ui_boolean_dialog import Ui_bool_dialog
-
-from structure.torrent import Torrent, File, Episode
+from structure.torrent import Torrent
+from ui.ui_boolean_dialog import Ui_bool_dialog
+from ui.ui_main_window import Ui_MainWindow
+from ui.ui_setup_dialog import Ui_setup_dialog
 
 # TODO:
-# Input Evaluations
-# rework editing/deleting
 # same patternA may not be in two seasons
 
-# 0 = No debug output
-# 1 = small stuff?
-# 2 = full json data dumps
-DEBUG_OUTPUT_LEVEL = 2
-
-SERIES_DATA_FILE = "./data.json"
 SETTINGS_FILE = "./settings.json"
-os.makedirs(os.path.dirname(SERIES_DATA_FILE), exist_ok=True)
 os.makedirs(os.path.dirname(SETTINGS_FILE), exist_ok=True)
 
 
@@ -56,7 +45,13 @@ class MainWindow(QMainWindow):
         self.ui = Ui_MainWindow()
         self.ui.setupUi(self)
         self.file_fetcher = None
+        self.rename_worker = None
 
+        self.series_selection = None  # need settings for tvdb auth
+        self.regex_builder = None
+        self.PatternEditor = None
+
+        # TODO use "Promote Widget" in Qt Designer instead
         # Ugly workaround. Python doesn't allow casting the Qt Designer's QTreeWidget to QTorrentTreeWidget, so we have to rebuild it.
         old_tree_torrents = self.ui.tree_torrents
         self.ui.tree_torrents = QTorrentTreeWidget(self.ui.central_widget)
@@ -70,7 +65,7 @@ class MainWindow(QMainWindow):
         header.setText(2, "")
         self.ui.tree_torrents.setHeaderItem(header)
         self.ui.tree_torrents.setColumnCount(3)
-        self.ui.tree_torrents.header().setStretchLastSection(False);
+        self.ui.tree_torrents.header().setStretchLastSection(False)
         self.ui.tree_torrents.header().setSectionResizeMode(0, QHeaderView.Stretch)
         self.ui.tree_torrents.header().setSectionResizeMode(1, QHeaderView.Stretch)
         self.ui.tree_torrents.header().setSectionResizeMode(2, QHeaderView.ResizeToContents)
@@ -81,6 +76,7 @@ class MainWindow(QMainWindow):
         self.progress_bar.setMaximumSize(180, 19)
         self.ui.statusbar.addPermanentWidget(self.progress_bar)
         self.ui.button_scan.clicked.connect(self.rename_scan)
+        self.ui.button_add.clicked.connect(self.open_series_selection)
         self.ui.button_confirm_rename.clicked.connect(self.rename_confirm)
 
         self.settings = {}
@@ -105,9 +101,59 @@ class MainWindow(QMainWindow):
         self.file_fetcher.start()
 
     def rename_confirm(self):
-        renamer = RenameWorker(self.settings)
-        renamer.rename_torrents(self.ui.tree_torrents)
+        self.ui.button_confirm_rename.setEnabled(False)
+        self.ui.tree_torrents.setEnabled(False)
+        self.rename_worker = RenameWorker(self.settings)
+        self.rename_worker.signals.rename_finished.connect(self.rename_finished)
+        self.rename_worker.torrent_tree = self.ui.tree_torrents
+        self.rename_worker.start()
 
+    @Slot()
+    def open_series_selection(self):
+        self.series_selection = SeriesSelection(self.settings)
+        self.series_selection.done.connect(self.open_regex_builder)
+        self.series_selection.show()
+
+    @Slot()
+    def open_regex_builder(self):
+        self.series_selection.hide()
+        self.regex_builder = RegexBuilder()
+        self.regex_builder.done.connect(self.open_pattern_editor)
+        self.regex_builder.show()
+
+    @Slot(str)
+    def open_pattern_editor(self, regex):
+        self.regex_builder.hide()
+        self.PatternEditor = PatternEditor()
+        self.PatternEditor.done.connect(self.finalize_pattern_data)
+        self.PatternEditor.setText(regex)
+        self.PatternEditor.show()
+
+    @Slot(str, str)
+    def finalize_pattern_data(self, regex, target):
+        self.PatternEditor.hide()
+        tvdb_id = self.series_selection.selected_tvdb_id
+        season = self.series_selection.selected_season
+        regex_pattern = regex
+        target_pattern = target
+
+        data = {
+            str(tvdb_id): {  # 1 series: n seasons
+                str(season): {   # 1 season: m regex patterns
+                    regex_pattern: target_pattern   # 1 regex pattern: 1 target pattern
+                }
+            }
+        }
+
+        series_data_handler = SeriesDataHandler()
+        series_data_handler.read()
+        series_data_handler.add(data)
+        series_data_handler.write()
+
+    @Slot()
+    def rename_finished(self):
+        self.ui.tree_torrents.setEnabled(True)
+        self.ui.button_confirm_rename.setEnabled(True)
 
     def startup(self):
         try:
@@ -123,21 +169,6 @@ class MainWindow(QMainWindow):
             self.setup()
         else:
             self.show()
-
-        # tvdb_auth()
-        # qbt_auth()
-
-        # qbt_version_cur = get_qbt_version()
-        # if self.settings["qbt_version"] != qbt_version_cur:
-        #     if not input_bool(f"WARNING: QBittorrent version mismatch: Got \"{qbt_version_cur}\", expected \"{settings['qbt_version']}\". Compatibility is not ensured. \nContinue?\n>>"):
-        #         print("Exiting.")
-        #         return
-        #     else:
-        #         if input_bool(f"If you're sure version {qbt_version_cur} is supported we can remember it as safe so you won't be warned again.\nDo it?\n>>"):
-        #             settings["qbt_version"] = qbt_version_cur
-        #             with open(SETTINGS_FILE, 'w') as f:
-        #                 dump = json.dumps(settings, indent=4, sort_keys=False)
-        #                 f.write(dump)
 
     def setup(self):
         dialog = SetupDialog()
@@ -160,7 +191,6 @@ class MainWindow(QMainWindow):
         dialog.ui.btn_confirm.clicked.connect(confirm)
         dialog.show()
 
-
         # print("\nHello there! Running first time setup. To edit these settings in the future check out the settings.json file located next to the executable.\n")
         # settings["qbt_version"] = "v4.1.6"
         # # TODO: Read the client location from Registry, possibly "HKEY_LOCAL_MACHINE\SOFTWARE\WOW6432Node\qBittorrent\InstallLocation", and then offer that as the default option.
@@ -176,6 +206,7 @@ class MainWindow(QMainWindow):
         #     settings["tvdb_url"] = "https://api.thetvdb.com"
         # # settings["tvdb_apikey"] = input("Enter your API Key for the TheTVDB.com API. (Keep empty for default)\n >>")
         # settings["tvdb_apikey"] = "2323B61F3A9DA8C8"
+
 
 def main():
     app = QApplication(sys.argv)

@@ -1,20 +1,7 @@
-import requests
 import json
-import os
-
+import requests
 from PySide2.QtCore import Signal, QObject
-
-from structure.torrent import Torrent, File, Episode
-
-# 0 = No debug output
-# 1 = small stuff?
-# 2 = full json data dumps
-DEBUG_OUTPUT_LEVEL = 2
-
-
-def debug(output, level):
-    if DEBUG_OUTPUT_LEVEL >= level:
-        print(output)
+from structure.torrent import Torrent
 
 
 def qbt_tag_prefix(string):

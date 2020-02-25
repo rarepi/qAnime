@@ -1,134 +1,21 @@
 import json
 import os
-import subprocess
 import re  # regex
-import psutil
+import subprocess
 
+import psutil
 from PySide2.QtCore import QThread, Signal, QObject
 
-from QTorrentWidgets import QTorrentTreeWidget, QTorrentTreeWidgetTorrent
+import qa2_util
+from QTorrentWidgets import QTorrentTreeWidget
+from SeriesDataHandler import SeriesDataHandler
 from qa2_qbt import QBTHandler
 from qa2_tvdb import TVDBHandler
+from structure.torrent import Torrent
 
-from structure.torrent import Torrent, File, Episode
 
-# TODO:
-# Input Evaluations
-# rework editing/deleting
-# same patternA may not be in two seasons
-
-# 0 = No debug output
-# 1 = small stuff?
-# 2 = full json data dumps
-DEBUG_OUTPUT_LEVEL = 2
-
-SERIES_DATA_FILE = "./data.json"
 SETTINGS_FILE = "./settings.json"
-os.makedirs(os.path.dirname(SERIES_DATA_FILE), exist_ok=True)
 os.makedirs(os.path.dirname(SETTINGS_FILE), exist_ok=True)
-
-
-def debug(output, level):
-    if DEBUG_OUTPUT_LEVEL >= level:
-        print(output)
-
-
-def clean_filename(filename):
-    illegal_characters = '\\"/:<>?|'
-    rem_ill_chars = str.maketrans(illegal_characters, '_' * len(illegal_characters))
-    return filename.translate(rem_ill_chars)
-
-
-def metadata_wizard(tvdb_id, series_data):
-    x_name = "Mob Psycho 100"
-    x_pattern_a = r"^\[HorribleSubs\] Mob Psycho 100 - (\d\d) \[1080p\]\.mkv"
-    x_pattern_b = r"Mob Psycho 100 - s\S\Se\E\E - [\A\A] \T - [2019 ENG-Sub AAC 1080p x264 - HorribleSubs].mkv"
-
-    sdata = {}
-    pattern_a = ""
-    pattern_b = ""
-    # add new entry
-    if tvdb_id is -1:
-        tvdb_series = {}
-        while len(tvdb_series) == 0:
-            name = input("Enter the name of the series.\nExample: " + x_name + "\n>> ")
-            tvdb_series = tvdb_get_series(name)
-        tvdb_id = tvdb_series[0]
-        name = tvdb_series[1]
-
-        if tvdb_id in series_data.keys():
-            if not input_bool("Series ID " + tvdb_id + " already has an entry named \"" + series_data[tvdb_id]['name'] + "\". Add new pattern?\n>> "):
-                return
-            sdata = series_data[tvdb_id]
-        else:
-            sdata = {
-                "name": name,
-                "patterns": {
-                }
-            }
-    # edit existing entry
-    else:
-        sdata = series_data[tvdb_id]
-
-        pattern_set_options = {}
-        i = 0
-        for season, pattern_pairs in sdata['patterns'].items():
-            for a, b in pattern_pairs.items():
-                pattern_set_options[i] = (season, a)
-                print(str(i) + ") " + a + " RENAMES TO " + b)
-                i += 1
-        while True:
-            index = input_int("Choose the pattern set you want to replace by index.\n>> ")
-            try:
-                pattern_a = pattern_set_options[index][1]
-                pattern_b = sdata['patterns'][pattern_set_options[index][0]][pattern_set_options[index][1]]
-                print("Pattern set \"{} : {}\" has been removed.".format(pattern_set_options[index][1],
-                                                                         sdata['patterns'][
-                                                                             pattern_set_options[index][0]].pop(
-                                                                             pattern_set_options[index][1])))
-            except KeyError as e:
-                print("Invalid input.")
-                continue
-            break
-
-    pattern_a_rgx = re.compile(r".*\((?:\\d)+\).*")
-    pattern_b_rgx = re.compile(r".*(?:(?:\\E)|(?:\\A))+.*")
-    while True:
-        if len(pattern_a) == 0:
-            new = input(rf"Enter unique regex for detection. Provide a capture group for the episode number. (e. g. (\d\d))\nExample: {x_pattern_a}\n>> ")
-        else:
-            new = input(rf"Enter your new unique regex for detection. Provide a capture group for the episode number. (e. g. (\d\d))\nExample: {x_pattern_a}\nKeep empty to keep the current regex: {pattern_a}\n>> ")
-            if len(new) == 0:
-                new = pattern_a
-        try:
-            re.compile(new)
-        except re.error as e:
-            print("Invalid regex.", e)
-            continue
-        if not pattern_a_rgx.match(new):
-            print("Your regex pattern is missing a capture group for episode numbers. Episodes naturally have to be extinguishable by their seasonal or absolute episode numbers.")
-            continue
-        pattern_a = new
-        break
-    while True:
-        if len(pattern_b) == 0:
-            new = input(fr"Enter target file name. You must provide a tag for either seasonal or absolute episode numbers.\nExample: {x_pattern_b}\nValid tags:\n\S - Season Number\n\E - Seasonal Episode Number\n\A - Absolute Episode Number\n\T - Season Title\n>> ")
-        else:
-            new = input(fr"Enter your new target file name. You must provide a tag for either seasonal or absolute episode numbers.\nExample: {x_pattern_b}\nValid tags:\n\S - Season Number\n\E - Seasonal Episode Number\n\A - Absolute Episode Number\n\T - Season Title\nKeep empty to keep the current pattern: " + pattern_b + "\n>> ")
-            if len(new) == 0:
-                new = pattern_b
-        if not pattern_b_rgx.match(new):
-            print("Your filename is missing a capture group for episode numbers. Episodes naturally have to be extinguishable by their seasonal or absolute episode numbers.")
-        pattern_b = new
-        break
-    if input_bool("Are episode numbers for this pattern set given per season or in absolute numbers? (s = seasonal; a = absolute)\n>> ", ('s', "seasonal", 'e', "episodic", 'y'), ('a', "absolute", 'n')):
-        season = input("Enter the season number for this pattern set.\nExample for a Season 2: 2\n>> ")
-    else:
-        season = "-1"
-
-    sdata['patterns'] = {**sdata['patterns'], **{season: {pattern_a: pattern_b}}}
-    series_data[tvdb_id] = sdata
-    return series_data
 
 
 def pattern_replace(pattern, old, new, fill=False):
@@ -166,21 +53,6 @@ def input_int(text):
             print("Invalid input.")
             continue
         return value
-
-
-def read_series_data():
-    series_data = {}
-    try:
-        with open(SERIES_DATA_FILE, 'r') as f:
-            series_data = json.load(f)
-    except FileNotFoundError:
-        file = open(SERIES_DATA_FILE, 'w')
-        series_data = {}
-    except json.decoder.JSONDecodeError:
-        if not os.stat(SERIES_DATA_FILE).st_size == 0:
-            print("Failed to read series data. Corrupted file? Check \"" + os.path.abspath(SERIES_DATA_FILE) + "\".")
-            quit()  # TODO: really quit? maybe offer to display the file?
-    return series_data
 
 
 class Fastresume:
@@ -297,18 +169,19 @@ class Fastresume:
             return None, None    # TODO ERROR
 
 
-
 class RenameWorker(QThread):
     def __init__(self, settings, parent=None):
         super().__init__()
         self.settings = settings
+        self.torrent_tree = None
+        self.signals = RenameWorkerSignals()
 
-    def rename_torrents(self, tree_torrents:QTorrentTreeWidget):
+    def run(self):
         """
         Renames a QTorrentTreeWidget's torrents and their files and manipulates the QBittorrent fastresume file accordingly.
         """
-        if not isinstance(tree_torrents, QTorrentTreeWidget):
-            return
+        if not isinstance(self.torrent_tree, QTorrentTreeWidget):
+            return  # TODO ERROR
         else:
             process = None
             for p in psutil.process_iter():  # find QBittorrent process
@@ -329,8 +202,8 @@ class RenameWorker(QThread):
             else:
                 print("No running QBittorrent process found. Assuming it has been terminated.")
 
-            for i in range(tree_torrents.topLevelItemCount()):
-                torrent_widget = tree_torrents.topLevelItem(i)
+            for i in range(self.torrent_tree.topLevelItemCount()):
+                torrent_widget = self.torrent_tree.topLevelItem(i)
 
                 fastresume_file = os.path.expandvars("%LOCALAPPDATA%/qBittorrent/BT_backup/") + torrent_widget.torrent.hash + ".fastresume"
                 with open(fastresume_file, 'rb') as f:
@@ -338,20 +211,24 @@ class RenameWorker(QThread):
                 fastresume = Fastresume(fr)
                 if torrent_widget.checked:
                     fastresume.rename_torrent(torrent_widget.torrent.name_new)
+                    torrent_widget.previous_name = torrent_widget.torrent.name  # backup for a possibly needed rollback
+                    torrent_widget.setName(torrent_widget.torrent.name_new)
 
                 for j in range(torrent_widget.childCount()):
                     file_widget = torrent_widget.child(j)
                     if not file_widget.checked:
                         continue
                     old_filename_relative = file_widget.file.getRelativeFilename()
-                    file_widget.file.filename_new = clean_filename(file_widget.file.filename_new)
+                    file_widget.file.filename_new = qa2_util.clean_filename(file_widget.file.filename_new)
                     new_filename_relative = file_widget.file.getRelativeFilename(file_widget.file.filename_new)
 
                     fastresume.rename_file(old_filename_relative, new_filename_relative)
-
                     try:
                         os.rename('\\'.join(filter(None, [torrent_widget.torrent.save_path, old_filename_relative])),
                                   '\\'.join(filter(None, [torrent_widget.torrent.save_path, file_widget.file.subpath, file_widget.file.filename_new])))
+                        file_widget.previous_name = file_widget.file.filename                   # backup for a possibly needed rollback
+                        file_widget.setName(file_widget.file.filename_new)                      # update current name in GUI
+
                         print(f"Renamed {old_filename_relative} to {new_filename_relative}.")
                     except OSError as e:
                         print(e.strerror)
@@ -365,29 +242,39 @@ class RenameWorker(QThread):
                     print("QBittorrent files have been manipulated accordingly.")
                 except OSError as e:
                     print(e.strerror)
-                    print("Failed to manipulate QBittorrent fastresume file. Reverting file rename...")
+                    print("Failed to manipulate QBittorrent fastresume file. Reverting renames...")
+                    torrent_widget.revertName()
                     for j in range(torrent_widget.childCount()):
                         file_widget = torrent_widget.child(torrent_widget.childCount()-1-j)
                         if not file_widget.checked:
                             continue
                         old_filename_relative = file_widget.file.getRelativeFilename()
-                        new_filename_relative = file_widget.file.getRelativeFilename(file_widget.file.filename_new)
+                        new_filename_relative = file_widget.file.getRelativeFilename(file_widget.previous_name)
 
                         fastresume.rename_file(new_filename_relative, old_filename_relative)
 
                         try:
                             os.rename(
                                 '\\'.join(filter(None, [torrent_widget.torrent.save_path, file_widget.file.subpath,
-                                                        file_widget.file.filename_new])),
-                                '\\'.join(filter(None, [torrent_widget.torrent.save_path, old_filename_relative])))
+                                                        file_widget.file.filename])),
+                                '\\'.join(filter(None, [torrent_widget.torrent.save_path, file_widget.file.subpath,
+                                                        file_widget.previous_name])))
+                            file_widget.revertName()
                             print(f"Reverted {new_filename_relative} to {old_filename_relative}.")
                         except OSError as e:
                             print(e.strerror)
-                            print("Rename revert failed. Q_Q")
+                            print("Rename revert failed. Fix it yourself! ¯\\_(ツ)_/¯")
                             break
             print("Restarting QBittorrent...")
             subprocess.Popen(self.settings["qbt_client"], close_fds=True, creationflags=subprocess.DETACHED_PROCESS)
             print("Restarted!")
+
+        # noinspection PyUnresolvedReferences
+        self.signals.rename_finished.emit()
+
+
+class RenameWorkerSignals(QObject):
+    rename_finished = Signal()
 
 
 class FileFetcherSignals(QObject):
@@ -403,9 +290,11 @@ class FileFetcher(QThread):
         self.torrents = {}
         self.qbt_handler = QBTHandler(self.settings)
         self.tvdb_handler = TVDBHandler(self.settings)
+        self.series_data_handler = SeriesDataHandler()
 
     def run(self):
-        self.series_data = read_series_data()
+        self.series_data_handler.read()
+        print(self.series_data_handler.series_data)
         self.torrents = self.qbt_handler.fetch_torrents()
         self.action_rename_scan()
         self.exec_()    # start event handling
@@ -418,11 +307,11 @@ class FileFetcher(QThread):
             for file_info in torrent_info.files:
                 if file_info.priority == 0:  # skip ignored files
                     continue
-                for tvdb_id, data in self.series_data.items():
-                    for season, patterns in data['patterns'].items():
+                for tvdb_id, data in self.series_data_handler.series_data.items():
+                    for season, patterns in data.items():
                         for patternA, patternB in patterns.items():
                             pattern = re.compile(patternA)
-                            if pattern.match(file_info.filename):   # send whole torrent to GUI, but first generate new names. also need to handle not matching files like .nfo files and shit like that. (ignore files without new filenames?)
+                            if pattern.match(file_info.filename):
                                 file_info.filename_new = self.pattern_wizard(tvdb_id, season, patternA, patternB, file_info.filename)
                                 irrelevant = False
             if not irrelevant:
@@ -448,4 +337,4 @@ class FileFetcher(QThread):
                 filename_new = pattern_replace(filename_new, r"\A", absolute_number, True)
             while r"\T" in filename_new:
                 filename_new = pattern_replace(filename_new, r"\T", title, False)
-            return clean_filename(filename_new)
+            return qa2_util.clean_filename(filename_new)

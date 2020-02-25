@@ -1,24 +1,19 @@
-import os
-
 # 0 = No debug output
 # 1 = small stuff?
 # 2 = full json data dumps
 DEBUG_OUTPUT_LEVEL = 2
 
-SERIES_DATA_FILE = "./data.json"
-SETTINGS_FILE = "./settings.json"
-os.makedirs(os.path.dirname(SERIES_DATA_FILE), exist_ok=True)
-os.makedirs(os.path.dirname(SETTINGS_FILE), exist_ok=True)
+CHARSET_ILLEGAL_FILENAME = '\\"/:<>?|'
+CHARSET_REGEX_ESCAPES = '+*?^$\\.[]{}()|/'
 
 
-def debug(output, level):
+def debug(*args, level=1):
     if DEBUG_OUTPUT_LEVEL >= level:
-        print(output)
+        print(*args)
 
 
 def clean_filename(filename):
-    illegal_characters = '\\"/:<>?|'
-    rem_ill_chars = str.maketrans(illegal_characters, '_' * len(illegal_characters))
+    rem_ill_chars = str.maketrans(CHARSET_ILLEGAL_FILENAME, '_' * len(CHARSET_ILLEGAL_FILENAME))
     return filename.translate(rem_ill_chars)
 
 

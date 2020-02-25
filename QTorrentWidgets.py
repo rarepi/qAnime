@@ -1,6 +1,6 @@
 from PySide2.QtCore import Qt, Slot
 from PySide2.QtGui import QColor
-from PySide2.QtWidgets import QTreeWidgetItem, QTreeWidget, QWidget, QHBoxLayout, QCheckBox
+from PySide2.QtWidgets import QTreeWidgetItem, QTreeWidget
 
 
 class QTorrentTreeWidgetFile(QTreeWidgetItem):
@@ -9,6 +9,7 @@ class QTorrentTreeWidgetFile(QTreeWidgetItem):
         self.file = file
         self.setText(0, self.file.filename)
         self.checked = bool(self.checkState(2))
+        self.previous_name = None
 
         self.setTextColor(0, QColor(128, 128, 128, 255))
 
@@ -18,8 +19,17 @@ class QTorrentTreeWidgetFile(QTreeWidgetItem):
         else:
             self.setDisabled(True)
 
-    def value_change(self, text):
+    def setNewName(self, text):
         self.file.filename_new = text
+
+    def setName(self, name:str):
+        self.previous_name = self.text(0)
+        self.setText(0, name)
+
+    def revertName(self):
+        if self.previous_name:
+            self.setText(0, self.previous_name)
+            self.previous_name = None
 
 
 class QTorrentTreeWidgetTorrent(QTreeWidgetItem):
@@ -28,11 +38,27 @@ class QTorrentTreeWidgetTorrent(QTreeWidgetItem):
         self.torrent = torrent
         self.setText(0, self.torrent.name)
         self.checked = bool(self.checkState(2))
+        self.previous_name = None
 
         self.setTextColor(0, QColor(128, 128, 128, 255))
 
-    def value_change(self, text):
+    def setNewName(self, text):
         self.torrent.name_new = text
+
+    def setName(self, name:str):
+        self.previous_name = self.text(0)
+        self.setText(0, name)
+
+    def revertName(self):
+        if self.previous_name:
+            self.setText(0, self.previous_name)
+            self.previous_name = None
+
+    def addChild(self, child:QTorrentTreeWidgetFile):
+        super().addChild(child)
+
+    def child(self, index:int) -> QTorrentTreeWidgetFile:
+        return super().child(index)
 
 
 class QTorrentTreeWidget(QTreeWidget):
@@ -70,7 +96,7 @@ class QTorrentTreeWidget(QTreeWidget):
     @Slot(QTorrentTreeWidgetTorrent, int)
     def on_item_changed(self, item, column):
         if column == 1:
-            item.value_change(item.text(column))
+            item.setNewName(item.text(column))
         if column == 2:
             item.checked = bool(item.checkState(column))
 

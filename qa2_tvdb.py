@@ -1,17 +1,8 @@
 import requests
-import json
-import os
-import re  # regex
-import time
-import sys
-from threading import Thread
 
-from PySide2.QtCore import QThread, Signal, QTimer, Slot, QEventLoop, QObject, QRunnable
+from PySide2.QtCore import QObject, Signal
 
-# 0 = No debug output
-# 1 = small stuff?
-# 2 = full json data dumps
-DEBUG_OUTPUT_LEVEL = 2
+import qa2_util
 
 
 class TVDBEpisodeNumberNotInResult(Exception):
@@ -19,12 +10,9 @@ class TVDBEpisodeNumberNotInResult(Exception):
     pass
 
 
-def debug(output, level):
-    if DEBUG_OUTPUT_LEVEL >= level:
-        print(output)
-
-
 class TVDBHandler(QObject):
+    series_results_collected = Signal(list)
+
     def __init__(self, settings):
         super(TVDBHandler, self).__init__()
         self.settings = settings
@@ -54,31 +42,41 @@ class TVDBHandler(QObject):
             print('TVDB Series Fetch Response: ', result.text)
             return {}
         json_data = result.json()
+        qa2_util.debug(json_data['data'], level=2)
         if type(json_data) is dict:
-            series_options = {}
-            i = 0
-            debug(f"json data: {json_data['data']}", 2)
+            search_result = []
             for item in json_data['data']:
-                series_options[i] = (str(item['id']), item['seriesName'])
-
-                if isinstance(item['network'], str):  # network can be None
-                    print(str(i) + ") " + series_options[i][1] + " (" + item['network'] + ")")
-                else:
-                    print(f"{str(i)}) {series_options[i][1]}")
-
-                i += 1
-            while True:
-                index = input_int("Choose the correct series by index.\n>> ")
                 try:
-                    print(
-                        "You picked \"" + series_options[index][1] + "\". TheTVDB ID is " + series_options[index][
-                            0] + ".")
-                except KeyError:
-                    print("Invalid input.")
-                    continue
-                break
+                    search_result.append((item['id'], item['seriesName'], item['firstAired'][:4], item['network']))
+                except TypeError:
+                    if item['firstAired'] is None:
+                        search_result.append((item['id'], item['seriesName'], None, item['network']))
 
-            return series_options[index]
+            self.series_results_collected.emit(search_result)
+            # series_options = {}
+            # i = 0
+            # qa2_util.debug(f"json data: {json_data['data']}", 2)
+            # for item in json_data['data']:
+            #     series_options[i] = (str(item['id']), item['seriesName'])
+            #
+            #     if isinstance(item['network'], str):  # network can be None
+            #         print(str(i) + ") " + series_options[i][1] + " (" + item['network'] + ")")
+            #     else:
+            #         print(f"{str(i)}) {series_options[i][1]}")
+            #
+            #     i += 1
+            # while True:
+            #     index = qa2_util.input_int("Choose the correct series by index.\n>> ")
+            #     try:
+            #         print(
+            #             "You picked \"" + series_options[index][1] + "\". TheTVDB ID is " + series_options[index][
+            #                 0] + ".")
+            #     except KeyError:
+            #         print("Invalid input.")
+            #         continue
+            #     break
+            #
+            # return series_options[index]
 
     def get_single_episode(self, tvdb_id, season, episode_number):
         head = {"Authorization": "Bearer " + self.token, "Accept-Language": "en", "content-type": "application/json"}
