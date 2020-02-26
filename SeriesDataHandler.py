@@ -49,11 +49,14 @@ class SeriesDataHandler:
         if self.series_data is None:
             self.series_data = read()
 
+        tvdb_id = str(tvdb_id)
+        season = str(season)
+
         season_data = {regex: target}
-        tvdb_data = {str(season): season_data}
+        tvdb_data = {season: season_data}
 
         if self.series_data.get(tvdb_id) is None:
-            self.series_data[tvdb_id] = {tvdb_data}
+            self.series_data[tvdb_id] = tvdb_data
         else:
             if self.series_data[tvdb_id].get(season) is None:
                 self.series_data[tvdb_id] = {**self.series_data[tvdb_id], **tvdb_data}

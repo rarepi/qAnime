@@ -87,6 +87,7 @@ class RegexBuilder(QDialog):
                 text = text[:x] + escaped_text_segment + text[previous:]
                 previous = x
             qa2_util.debug(text, level=1)
+        text = "^" + text
 
         # noinspection PyUnresolvedReferences
         self.done.emit(text)
