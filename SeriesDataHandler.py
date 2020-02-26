@@ -37,27 +37,26 @@ class SeriesDataHandler:
     def write(self):
         write(self.series_data)
 
-    def add(self, new_data: dict):
+    def add(self, tvdb_id: int, season: int, regex: str, target: str):
+        if not isinstance(tvdb_id, int):
+            raise TypeError(f"TVDB ID must be int. {tvdb_id} is {type(tvdb_id)}.")
+        if not isinstance(season, int):
+            raise TypeError(f"Season Number must be int. {season} is {type(season)}.")
+        if not isinstance(regex, str):
+            raise TypeError(f"Regex pattern must be str. {regex} is {type(regex)}.")
+        if not isinstance(target, str):
+            raise TypeError(f"Target pattern must be str. {target} is {type(target)}.")
         if self.series_data is None:
             self.series_data = read()
-        if isinstance(new_data, dict):
-            for tvdb_id in new_data.keys():
-                if tvdb_id in self.series_data.keys():
-                    raise KeyError(f"Key {tvdb_id} is already in use and thus may not be added by this function.")
-                if isinstance(tvdb_id, str) and isinstance(new_data[tvdb_id], dict):
-                    int(tvdb_id)    # raises an exception if it's not numeric. (str.isnumeric() misses negative numbers!)
-                    for season in new_data[tvdb_id].keys():
-                        if isinstance(season, str) and isinstance(new_data[tvdb_id][season], dict):
-                            int(season)
-                            for regex, target in new_data[tvdb_id][season].items():
-                                if isinstance(regex, str) and isinstance(target, str):
-                                    pass
-                                else:
-                                    raise TypeError(f"Patterns must be strings. {regex} is {type(regex)}, {target} is {type(target)}.")
-                        else:
-                            raise TypeError(f"Seasons must be numeric string keys in a dict. {season} is {type(season)}.")
-                else:
-                    raise TypeError(f"TVDB IDs must be numeric string keys in a dict. {tvdb_id} is {type(tvdb_id)}.")
+
+        season_data = {regex: target}
+        tvdb_data = {str(season): season_data}
+
+        if self.series_data.get(tvdb_id) is None:
+            self.series_data[tvdb_id] = {tvdb_data}
         else:
-            raise TypeError(f"Series Data must be a dict. {type(new_data)} found for\n{new_data}")
-        self.series_data = {**self.series_data, **new_data}
+            if self.series_data[tvdb_id].get(season) is None:
+                self.series_data[tvdb_id] = {**self.series_data[tvdb_id], **tvdb_data}
+            else:
+                # if given regex already exists in this season, its target pattern will be overwritten here.
+                self.series_data[tvdb_id][season] = {**self.series_data[tvdb_id][season], **season_data}

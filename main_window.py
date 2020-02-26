@@ -137,17 +137,9 @@ class MainWindow(QMainWindow):
         regex_pattern = regex
         target_pattern = target
 
-        data = {
-            str(tvdb_id): {  # 1 series: n seasons
-                str(season): {   # 1 season: m regex patterns
-                    regex_pattern: target_pattern   # 1 regex pattern: 1 target pattern
-                }
-            }
-        }
-
         series_data_handler = SeriesDataHandler()
         series_data_handler.read()
-        series_data_handler.add(data)
+        series_data_handler.add(tvdb_id, season, regex_pattern, target_pattern)
         series_data_handler.write()
 
     @Slot()
