@@ -9,6 +9,7 @@ from PySide2.QtWidgets import QApplication, QMainWindow, QProgressBar, QDialog, 
 import qAnime2
 from QTorrentWidgets import QTorrentTreeWidget
 from SeriesDataHandler import SeriesDataHandler
+from dialog.PatternSelector import PatternSelector
 from dialog.SeriesSelection import SeriesSelection
 from dialog.PatternEditor import PatternEditor
 from dialog.RegexBuilder import RegexBuilder
@@ -44,12 +45,32 @@ class MainWindow(QMainWindow):
         super(MainWindow, self).__init__()
         self.ui = Ui_MainWindow()
         self.ui.setupUi(self)
-        self.file_fetcher = None
-        self.rename_worker = None
 
-        self.series_selection = None  # need settings for tvdb auth
-        self.regex_builder = None
-        self.PatternEditor = None
+        self.startup()
+
+        # QThread
+        self.file_fetcher = FileFetcher(self.settings)
+        self.file_fetcher.qbt_handler.init_progress.connect(self.set_progress_bar)
+        self.file_fetcher.qbt_handler.update_progress.connect(self.set_progress_bar)
+        self.file_fetcher.signals.rename_scan_result.connect(self.append_rename_data)
+
+        # QThread
+        self.rename_worker = RenameWorker(self.settings)
+        self.rename_worker.signals.rename_finished.connect(self.rename_finished)
+
+        # dialogs
+        self.series_selection = SeriesSelection(self.settings)
+        self.series_selection.accepted.connect(self.open_regex_builder)
+        self.regex_builder = RegexBuilder()
+        self.regex_builder.accepted.connect(self.open_pattern_editor)
+        self.PatternEditor = PatternEditor()
+        self.PatternEditor.accepted.connect(self.finalize_pattern_data)
+        self.patternSelector = PatternSelector(self.settings)
+        # self.patternSelector.accepted.connect(self.)
+
+        # series data json read/write
+        self.series_data_handler = SeriesDataHandler()
+        self.series_data_handler.read()
 
         # TODO use "Promote Widget" in Qt Designer instead
         # Ugly workaround. Python doesn't allow casting the Qt Designer's QTreeWidget to QTorrentTreeWidget, so we have to rebuild it.
@@ -77,6 +98,7 @@ class MainWindow(QMainWindow):
         self.ui.statusbar.addPermanentWidget(self.progress_bar)
         self.ui.button_scan.clicked.connect(self.rename_scan)
         self.ui.button_add.clicked.connect(self.open_series_selection)
+        self.ui.button_edit.clicked.connect(self.open_pattern_selector)
         self.ui.button_confirm_rename.clicked.connect(self.rename_confirm)
 
         self.settings = {}
@@ -94,38 +116,30 @@ class MainWindow(QMainWindow):
         self.ui.tree_torrents.add_torrent(torrent)
 
     def rename_scan(self):
-        self.file_fetcher = FileFetcher(self.settings)
-        self.file_fetcher.qbt_handler.init_progress.connect(self.set_progress_bar)
-        self.file_fetcher.qbt_handler.update_progress.connect(self.set_progress_bar)
-        self.file_fetcher.signals.rename_scan_result.connect(self.append_rename_data)
         self.file_fetcher.start()
 
     def rename_confirm(self):
         self.ui.button_confirm_rename.setEnabled(False)
         self.ui.tree_torrents.setEnabled(False)
-        self.rename_worker = RenameWorker(self.settings)
-        self.rename_worker.signals.rename_finished.connect(self.rename_finished)
         self.rename_worker.torrent_tree = self.ui.tree_torrents
         self.rename_worker.start()
 
     @Slot()
     def open_series_selection(self):
-        self.series_selection = SeriesSelection(self.settings)
-        self.series_selection.accepted.connect(self.open_regex_builder)
         self.series_selection.show()
 
     @Slot()
     def open_regex_builder(self):
-        self.regex_builder = RegexBuilder()
-        self.regex_builder.accepted.connect(self.open_pattern_editor)
         self.regex_builder.show()
 
     @Slot()
     def open_pattern_editor(self):
-        self.PatternEditor = PatternEditor()
-        self.PatternEditor.accepted.connect(self.finalize_pattern_data)
         self.PatternEditor.setText(self.regex_builder.text)
         self.PatternEditor.show()
+
+    @Slot()
+    def open_pattern_selector(self):
+        self.patternSelector.show()
 
     @Slot()
     def finalize_pattern_data(self):
@@ -134,10 +148,8 @@ class MainWindow(QMainWindow):
         regex_pattern = self.PatternEditor.ui.text_edit_regex.toPlainText()
         target_pattern = self.PatternEditor.ui.text_edit_target.toPlainText()
 
-        series_data_handler = SeriesDataHandler()
-        series_data_handler.read()
-        series_data_handler.add(tvdb_id, season, regex_pattern, target_pattern)
-        series_data_handler.write()
+        self.series_data_handler.add(tvdb_id, season, regex_pattern, target_pattern)
+        self.series_data_handler.write()
 
     @Slot()
     def rename_finished(self):
@@ -200,8 +212,6 @@ class MainWindow(QMainWindow):
 def main():
     app = QApplication(sys.argv)
     window = MainWindow()
-
-    window.startup()
 
     sys.exit(app.exec_())
 

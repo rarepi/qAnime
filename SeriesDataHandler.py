@@ -36,6 +36,7 @@ class SeriesDataHandler:
 
     def write(self):
         write(self.series_data)
+        self.read()
 
     def add(self, tvdb_id: int, season: int, regex: str, target: str):
         if not isinstance(tvdb_id, int):

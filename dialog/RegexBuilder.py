@@ -25,7 +25,7 @@ class RegexBuilder(QDialog):
         self.ui.button_confirm.clicked.connect(self.make_regex)
 
         self.ui.group_buttons.parent().layout().setAlignment(self.ui.group_buttons, Qt.AlignHCenter)
-        self.ui.text_edit.setText("Hunter.x.Hunter.2011.S02E24.720p-Hi10p.BluRay.AAC2.0.x264-CTR.[F880ACB6].mkv")
+        # self.ui.text_edit.setText("Hunter.x.Hunter.2011.S02E24.720p-Hi10p.BluRay.AAC2.0.x264-CTR.[F880ACB6].mkv")
         font = QFont("Verdana", 14)
         self.ui.text_edit.setFont(font)
         fm = QFontMetrics(font)
