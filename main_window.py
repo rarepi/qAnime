@@ -111,31 +111,28 @@ class MainWindow(QMainWindow):
     @Slot()
     def open_series_selection(self):
         self.series_selection = SeriesSelection(self.settings)
-        self.series_selection.done.connect(self.open_regex_builder)
+        self.series_selection.accepted.connect(self.open_regex_builder)
         self.series_selection.show()
 
     @Slot()
     def open_regex_builder(self):
-        self.series_selection.hide()
         self.regex_builder = RegexBuilder()
-        self.regex_builder.done.connect(self.open_pattern_editor)
+        self.regex_builder.accepted.connect(self.open_pattern_editor)
         self.regex_builder.show()
 
-    @Slot(str)
-    def open_pattern_editor(self, regex):
-        self.regex_builder.hide()
+    @Slot()
+    def open_pattern_editor(self):
         self.PatternEditor = PatternEditor()
-        self.PatternEditor.done.connect(self.finalize_pattern_data)
-        self.PatternEditor.setText(regex)
+        self.PatternEditor.accepted.connect(self.finalize_pattern_data)
+        self.PatternEditor.setText(self.regex_builder.text)
         self.PatternEditor.show()
 
-    @Slot(str, str)
-    def finalize_pattern_data(self, regex, target):
-        self.PatternEditor.hide()
+    @Slot()
+    def finalize_pattern_data(self):
         tvdb_id = self.series_selection.selected_tvdb_id
         season = self.series_selection.selected_season
-        regex_pattern = regex
-        target_pattern = target
+        regex_pattern = self.PatternEditor.ui.text_edit_regex.toPlainText()
+        target_pattern = self.PatternEditor.ui.text_edit_target.toPlainText()
 
         series_data_handler = SeriesDataHandler()
         series_data_handler.read()

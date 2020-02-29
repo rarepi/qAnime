@@ -6,8 +6,6 @@ from ui.ui_pattern_editor import Ui_pattern_editor
 
 
 class PatternEditor(QDialog):
-    done = Signal(str, str)
-
     def __init__(self):
         super(PatternEditor, self).__init__()
         self.ui = Ui_pattern_editor()
@@ -28,5 +26,4 @@ class PatternEditor(QDialog):
 
     @Slot()
     def finalize_regex(self):
-        # noinspection PyUnresolvedReferences
-        self.done.emit(self.ui.text_edit_regex.toPlainText(), self.ui.text_edit_target.toPlainText())
+        self.accept()

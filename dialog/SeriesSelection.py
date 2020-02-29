@@ -8,8 +8,6 @@ from ui.ui_series_selection import Ui_series_selection
 
 
 class SeriesSelection(QDialog):
-    done = Signal()
-
     def __init__(self, settings):
         super(SeriesSelection, self).__init__()
         self.ui = Ui_series_selection()
@@ -73,4 +71,4 @@ class SeriesSelection(QDialog):
             self.selected_season = int(self.ui.input_season.text())
         else:
             self.selected_season = -1
-        self.done.emit()
+        self.accept()
