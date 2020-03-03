@@ -48,6 +48,10 @@ class MainWindow(QMainWindow):
 
         self.startup()
 
+        # series data json read/write
+        self.series_data_handler = SeriesDataHandler()
+        self.series_data_handler.read()
+
         # QThread
         self.file_fetcher = FileFetcher(self.settings)
         self.file_fetcher.qbt_handler.init_progress.connect(self.set_progress_bar)
@@ -65,12 +69,8 @@ class MainWindow(QMainWindow):
         self.regex_builder.accepted.connect(self.open_pattern_editor)
         self.PatternEditor = PatternEditor()
         self.PatternEditor.accepted.connect(self.finalize_pattern_data)
-        self.patternSelector = PatternSelector(self.settings)
+        self.patternSelector = PatternSelector(self.settings, self.series_data_handler.series_data)
         # self.patternSelector.accepted.connect(self.)
-
-        # series data json read/write
-        self.series_data_handler = SeriesDataHandler()
-        self.series_data_handler.read()
 
         # TODO use "Promote Widget" in Qt Designer instead
         # Ugly workaround. Python doesn't allow casting the Qt Designer's QTreeWidget to QTorrentTreeWidget, so we have to rebuild it.
@@ -139,6 +139,7 @@ class MainWindow(QMainWindow):
 
     @Slot()
     def open_pattern_selector(self):
+        self.patternSelector.load()
         self.patternSelector.show()
 
     @Slot()

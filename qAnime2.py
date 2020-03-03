@@ -80,7 +80,7 @@ class Fastresume:
         new = bytes(new, "utf-8")
 
         if old in self.data["mapped_files"]:
-            self.data["mapped_files"].replace(old, new, 1)
+            self.data["mapped_files"].replace(old, new, 1)  # TODO AttributeError: 'list' object has no attribute 'replace'
         else:
             self.data["mapped_files"].append(new)   # assuming correct order, kinda bad
 
