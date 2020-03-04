@@ -1,6 +1,7 @@
 settings.json
 data.json
 data2.json
+cache.json
 build
 __pycache__
 .vscode

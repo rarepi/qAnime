@@ -1,3 +1,7 @@
+import json
+import os
+from typing import Union
+
 import requests
 
 from PySide2.QtCore import QObject, Signal
@@ -18,6 +22,10 @@ class TVDBHandler(QObject):
         self.settings = settings
         self.cookie = None
         self.token = None
+
+        self.cache_file = self.settings["tvdb_cache"]
+        self.cache = None
+
         self.auth()
 
     def auth(self):
@@ -55,21 +63,66 @@ class TVDBHandler(QObject):
             self.series_results_collected.emit(search_result)
 
     def get_series_name(self, id_) -> str:
-        head = {"Authorization": "Bearer " + self.token, "Accept-Language": "en", "content-type": "application/json"}
-        data = {"keys": "seriesName"}
-        result = requests.get(self.settings["tvdb_url"] + '/series/' + str(id_) + "/filter", headers=head, params=data)
-        if result.status_code == 404:
-            print("TheTVDB.com was unable to find a series using the specified ID. Try a different ID.")
-            return {}
-        elif result.status_code != 200:
-            print('TVDB Series Fetch Response Status Code: ', result.status_code)
-            print('TVDB Series Fetch Response: ', result.text)
-            return {}
-        json_data = result.json()
-        qa2_util.debug(json_data['data'], level=2)
-        if type(json_data) is dict:
-            return json_data['data']['seriesName']
+        series_name = self.get_series_name_cached(id_)
+        if series_name is not None:
+            return series_name
+        else:
+            head = {"Authorization": "Bearer " + self.token, "Accept-Language": "en", "content-type": "application/json"}
+            data = {"keys": "seriesName"}
+            result = requests.get(self.settings["tvdb_url"] + '/series/' + str(id_) + "/filter", headers=head, params=data)
+            if result.status_code == 404:
+                print("TheTVDB.com was unable to find a series using the specified ID. Try a different ID.")
+                return {}
+            elif result.status_code != 200:
+                print('TVDB Series Fetch Response Status Code: ', result.status_code)
+                print('TVDB Series Fetch Response: ', result.text)
+                return {}
+            json_data = result.json()
+            qa2_util.debug(json_data['data'], level=2)
+            if type(json_data) is dict:
+                series_name = json_data['data']['seriesName']
+                self.cache_series_name(id_, series_name)
+                return series_name
 
+    def cache_series_name(self, id_:Union[str, int], series_name:str):
+        qa2_util.debug("Caching", id_, series_name, level=1)
+        try:
+            with open(self.cache_file, 'r+') as f:
+                cache = json.load(f)
+                if not isinstance(cache, dict):
+                    return None     # TODO ERROR
+                cache[id_] = series_name
+                qa2_util.debug("Writing cache:", cache, level=1)
+                cache = json.dumps(cache, indent=4, sort_keys=True)
+                f.seek(0)   # json.load() is a reading operation, so seeker must be moved to the front to overwrite existing data
+                f.write(cache)
+                f.truncate()    # Just to make sure. Usually our written data cannot be shorter in length than the existing one.
+        except json.decoder.JSONDecodeError as e:
+            if os.stat(self.cache_file).st_size != 0:   # file has data and is not decodable, so its state is invalid
+                print("Failed to read cache. Corrupted file? Check \"" + os.path.abspath(self.cache_file) + "\".")
+            else:
+                raise e     # Empty or missing file handled by default json library, so this *should* be unreachable.
+
+    def get_series_name_cached(self, id_:Union[str, int]) -> Union[str, None]:
+        try:
+            with open(self.cache_file, 'r') as f:
+                cache = json.load(f)
+        except FileNotFoundError:
+            with open(self.cache_file, 'w') as f:
+                f.write(json.dumps({}, indent=4))
+            return None
+        except json.decoder.JSONDecodeError:
+            if not os.stat(self.cache_file).st_size == 0:
+                print("Failed to read cache. Corrupted file? Check \"" + os.path.abspath(self.cache_file) + "\".")
+            else:
+                with open(self.cache_file, 'w') as f:
+                    f.write(json.dumps({}, indent=4))
+            return None
+        if not isinstance(cache, dict):
+            return None
+        if str(id_) in cache.keys():
+            return cache[id_]
+        return None
 
     def get_single_episode(self, tvdb_id, season, episode_number):
         head = {"Authorization": "Bearer " + self.token, "Accept-Language": "en", "content-type": "application/json"}

@@ -11,13 +11,15 @@ def read():
         with open(SERIES_DATA_FILE, 'r') as f:
             series_data = json.load(f)
     except FileNotFoundError:
-        file = open(SERIES_DATA_FILE, 'w')
-        series_data = {}
+        with open(SERIES_DATA_FILE, 'w') as f:
+            f.write(json.dumps({}, indent=4))
     except json.decoder.JSONDecodeError:
         if not os.stat(SERIES_DATA_FILE).st_size == 0:
-            print(
-                "Failed to read series data. Corrupted file? Check \"" + os.path.abspath(SERIES_DATA_FILE) + "\".")
+            print("Failed to read series data. Corrupted file? Check \"" + os.path.abspath(SERIES_DATA_FILE) + "\".")
             quit()  # TODO: really quit? maybe offer to display the file?
+        else:
+            with open(SERIES_DATA_FILE, 'w') as f:
+                f.write(json.dumps({}, indent=4))
     return series_data
 
 

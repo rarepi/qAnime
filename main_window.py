@@ -23,6 +23,9 @@ from ui.ui_setup_dialog import Ui_setup_dialog
 # same patternA may not be in two seasons
 
 SETTINGS_FILE = "./settings.json"
+
+QBT_VERSION = "v4.2.1"
+TVDB_CACHE_FILE = "./cache.json"
 os.makedirs(os.path.dirname(SETTINGS_FILE), exist_ok=True)
 
 
@@ -176,13 +179,15 @@ class MainWindow(QMainWindow):
         dialog = SetupDialog()
 
         def confirm():
-            self.settings["qbt_version"] = "v4.1.9.1"
+            self.settings["qbt_version"] = QBT_VERSION
             self.settings["qbt_client"] = dialog.ui.ledit_absolute_path.text()
             self.settings["qbt_username"] = dialog.ui.ledit_qbt_user.text()
             self.settings["qbt_password"] = dialog.ui.ledit_qbt_password.text()
             self.settings["qbt_url"] = dialog.ui.ledit_qbt_url.text()
             self.settings["tvdb_url"] = dialog.ui.ledit_tvdb_url.text()
             self.settings["tvdb_apikey"] = dialog.ui.ledit_tvdb_key.text()
+
+            self.settings["tvdb_cache"] = TVDB_CACHE_FILE
 
             with open(SETTINGS_FILE, 'w') as f:
                 dump = json.dumps(self.settings, indent=4, sort_keys=False)
