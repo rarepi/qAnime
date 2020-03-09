@@ -279,6 +279,7 @@ class RenameWorkerSignals(QObject):
 
 class FileFetcherSignals(QObject):
     rename_scan_result = Signal(Torrent)
+    rename_scan_finished = Signal()
 
 
 class FileFetcher(QThread):
@@ -316,6 +317,7 @@ class FileFetcher(QThread):
                                 irrelevant = False
             if not irrelevant:
                 self.signals.rename_scan_result.emit(torrent_info)
+        self.signals.rename_scan_finished.emit()
         return
 
     def pattern_wizard(self, tvdb_id, season, pattern_a, pattern_b, filename):

@@ -60,6 +60,7 @@ class MainWindow(QMainWindow):
         self.file_fetcher.qbt_handler.init_progress.connect(self.set_progress_bar)
         self.file_fetcher.qbt_handler.update_progress.connect(self.set_progress_bar)
         self.file_fetcher.signals.rename_scan_result.connect(self.append_rename_data)
+        self.file_fetcher.signals.rename_scan_finished.connect(self.enable_button_confirm_rename)
 
         # QThread
         self.rename_worker = RenameWorker(self.settings)
@@ -103,6 +104,7 @@ class MainWindow(QMainWindow):
         self.ui.button_add.clicked.connect(self.open_series_selection)
         self.ui.button_edit.clicked.connect(self.open_pattern_selector)
         self.ui.button_confirm_rename.clicked.connect(self.rename_confirm)
+        self.ui.button_confirm_rename.setEnabled(False)
 
         self.settings = {}
 
@@ -117,6 +119,11 @@ class MainWindow(QMainWindow):
     @Slot(Torrent)
     def append_rename_data(self, torrent):
         self.ui.tree_torrents.add_torrent(torrent)
+
+    @Slot()
+    def enable_button_confirm_rename(self):
+        if self.ui.tree_torrents.topLevelItemCount() > 0:
+            self.ui.button_confirm_rename.setEnabled(True)
 
     def rename_scan(self):
         self.file_fetcher.start()
