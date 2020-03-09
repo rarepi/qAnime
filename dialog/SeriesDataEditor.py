@@ -255,7 +255,6 @@ class PatternSelector(QDialog):
                             qa2_util.debug("Result:", self.series_data_handler.series_data[new_tvdb_id][season],
                                            level=1)
 
-                            # on same regex pattern, use selected_widget's pattern set TODO: ask the user instead?
                             pattern_items1 = selected_widget.takeChildren()
                             pattern_items2 = new_season_item.takeChildren()
 
@@ -331,7 +330,6 @@ class PatternSelector(QDialog):
                             qa2_util.debug("Result:", self.series_data_handler.series_data[new_tvdb_id][season],
                                            level=1)
 
-                            # on same regex pattern, use selected_widget's pattern set TODO: ask the user instead?
                             pattern_items2 = new_season_item.takeChildren()
 
                             non_duplicates = [item2 for item2 in pattern_items2 if
@@ -437,7 +435,6 @@ class PatternSelector(QDialog):
                     qa2_util.debug("Result:", self.series_data_handler.series_data[tvdb_id][new_season],
                                    level=1)
 
-                    # on same regex pattern, use selected_widget's pattern set TODO: ask the user instead?
                     pattern_items1 = selected_widget.takeChildren()
                     pattern_items2 = new_season_item.takeChildren()
 
@@ -493,7 +490,6 @@ class PatternSelector(QDialog):
                     qa2_util.debug("Result:", self.series_data_handler.series_data[tvdb_id][new_season],
                                    level=1)
 
-                    # on same regex pattern, use selected_widget's pattern set TODO: ask the user instead?
                     pattern_items2 = new_season_item.takeChildren()
 
                     non_duplicates = [item2 for item2 in pattern_items2 if
