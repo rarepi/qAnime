@@ -88,6 +88,7 @@ class PatternSelector(QDialog):
         self.ui.button_save.clicked.connect(self.save)
 
     def load(self):
+        self.ui.tree_patterns.clear()
         self.series_data_handler.read()
         self.tvdb_handler = TVDBHandler(self.settings)
         for tvdb_id, data in self.series_data_handler.series_data.items():
@@ -102,7 +103,6 @@ class PatternSelector(QDialog):
     def revert(self):
         self.ui.button_revert.setEnabled(False)
         self.ui.button_save.setEnabled(False)
-        self.ui.tree_patterns.clear()
         self.load()
 
     @Slot()
