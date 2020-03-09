@@ -9,7 +9,7 @@ from PySide2.QtWidgets import QApplication, QMainWindow, QProgressBar, QDialog, 
 import qAnime2
 from QTorrentWidgets import QTorrentTreeWidget
 from SeriesDataHandler import SeriesDataHandler
-from dialog.PatternSelector import PatternSelector
+from dialog.SeriesDataEditor import PatternSelector
 from dialog.SeriesSelection import SeriesSelection
 from dialog.PatternEditor import PatternEditor
 from dialog.RegexBuilder import RegexBuilder
@@ -72,7 +72,7 @@ class MainWindow(QMainWindow):
         self.regex_builder.accepted.connect(self.open_pattern_editor)
         self.PatternEditor = PatternEditor()
         self.PatternEditor.accepted.connect(self.finalize_pattern_data)
-        self.patternSelector = PatternSelector(self.settings, self.series_data_handler.series_data)
+        self.patternSelector = PatternSelector(self.settings)
         # self.patternSelector.accepted.connect(self.)
 
         # TODO use "Promote Widget" in Qt Designer instead
