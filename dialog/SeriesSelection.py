@@ -16,6 +16,7 @@ class SeriesSelection(QDialog):
         self.selected_season = None
 
         self.tvdb_handler = TVDBHandler(settings)
+        self.tvdb_handler.auth()  # TODO
 
         self.ui.table_search_results.setEnabled(False)
         self.ui.button_confirm.setEnabled(False)

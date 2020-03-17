@@ -49,11 +49,9 @@ class Ui_MainWindow(object):
 
         self.vlayout_buttons.addWidget(self.button_edit)
 
-        self.vlayout_spacer = QVBoxLayout()
-        self.vlayout_spacer.setObjectName(u"vlayout_spacer")
-        self.vlayout_spacer.setSizeConstraint(QLayout.SetDefaultConstraint)
+        self.verticalSpacer = QSpacerItem(20, 40, QSizePolicy.Minimum, QSizePolicy.Expanding)
 
-        self.vlayout_buttons.addLayout(self.vlayout_spacer)
+        self.vlayout_buttons.addItem(self.verticalSpacer)
 
 
         self.horizontalLayout.addLayout(self.vlayout_buttons)

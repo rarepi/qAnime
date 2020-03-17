@@ -4,11 +4,13 @@ import re  # regex
 import subprocess
 
 import psutil
-from PySide2.QtCore import QThread, Signal, QObject
+from PySide2.QtCore import QThread, Signal, QObject, QEventLoop, Slot
+from PySide2.QtWidgets import QMessageBox
 
 import qa2_util
 from QTorrentWidgets import QTorrentTreeWidget
 from SeriesDataHandler import SeriesDataHandler
+from dialog.QWaitingDialog import QWaitingDialog
 from qa2_qbt import QBTHandler
 from qa2_tvdb import TVDBHandler
 from structure.torrent import Torrent
@@ -30,29 +32,6 @@ def pattern_replace(pattern, old, new, fill=False):
             new = str(new).zfill(count)
         pattern = pattern[:idx] + new + pattern[idx + len(old) * count:]
     return pattern
-
-
-def input_bool(text, trues=("y", "yes", '1', "true"), falses=("n", "no", '0', "false")):
-    valid_answers = trues + falses
-    while True:
-        answer = input(text).lower()
-        if answer in valid_answers:
-            if answer in trues:
-                return True
-            elif answer in falses:
-                return False
-        else:
-            print("Invalid input.")
-
-
-def input_int(text):
-    while True:
-        try:
-            value = int(input(text))
-        except ValueError:
-            print("Invalid input.")
-            continue
-        return value
 
 
 class Fastresume:
@@ -80,9 +59,10 @@ class Fastresume:
         new = bytes(new, "utf-8")
 
         if old in self.data["mapped_files"]:
-            self.data["mapped_files"].replace(old, new, 1)  # TODO AttributeError: 'list' object has no attribute 'replace'
+            qa2_util.debug("Found", old, "in Fastresume, replacing...", level=2)
+            self.data["mapped_files"] = [x if x != old else new for x in self.data["mapped_files"]]
         else:
-            self.data["mapped_files"].append(new)   # assuming correct order, kinda bad
+            self.data["mapped_files"].append(new)   # TODO assuming correct order, that's kinda bad but it works for now
 
     def rename_torrent(self, new:str):
         if isinstance(new, str):
@@ -222,6 +202,7 @@ class RenameWorker(QThread):
                     file_widget.file.filename_new = qa2_util.clean_filename(file_widget.file.filename_new)
                     new_filename_relative = file_widget.file.getRelativeFilename(file_widget.file.filename_new)
 
+                    qa2_util.debug("Renaming", old_filename_relative, "to", new_filename_relative, level=2)
                     fastresume.rename_file(old_filename_relative, new_filename_relative)
                     try:
                         os.rename('\\'.join(filter(None, [torrent_widget.torrent.save_path, old_filename_relative])),
@@ -289,9 +270,75 @@ class FileFetcher(QThread):
         self.settings = settings
         self.series_data = {}
         self.torrents = {}
+
+        self.loop = QEventLoop()
+        self.waiting = QWaitingDialog()
+        self.waiting.accepted.connect(self.loop.quit)
+
+        thread_qbt_auth = QThread()
         self.qbt_handler = QBTHandler(self.settings)
+        self.qbt_handler.moveToThread(thread_qbt_auth)
+        thread_qbt_auth.started.connect(self.qbt_handler.auth)
+        self.qbt_handler.auth_finished.connect(self.notify_qbt_auth_response)
+        self.qbt_handler.auth_finished.connect(thread_qbt_auth.quit)
+
+        thread_tvdb_auth = QThread()
         self.tvdb_handler = TVDBHandler(self.settings)
+        self.tvdb_handler.moveToThread(thread_tvdb_auth)
+        thread_tvdb_auth.started.connect(self.tvdb_handler.auth)
+        self.tvdb_handler.auth_finished.connect(self.notify_tvdb_auth_response)
+        self.tvdb_handler.auth_finished.connect(thread_tvdb_auth.quit)
+
+        self.qbt_status_display = self.waiting.add_waiting_condition("Connecting to QBittorrent WebUI.")
+        self.tvdb_status_display = self.waiting.add_waiting_condition("Connecting to TVDB.")
+
+        thread_tvdb_auth.start()
+        thread_qbt_auth.start()
+
         self.series_data_handler = SeriesDataHandler()
+        self.waiting.show()
+        if thread_qbt_auth.isRunning() or thread_tvdb_auth.isRunning():
+            self.loop.exec_()
+
+    @Slot()
+    @Slot(int)
+    def notify_qbt_auth_response(self, response_code=None):
+        self.qbt_handler.auth_finished.disconnect(self.notify_qbt_auth_response)
+        if response_code != 0:
+            self.waiting.fail_waiting_condition(self.qbt_status_display)
+            self.qbt_handler = None
+            notification = QMessageBox()
+            notification.setText("Failed connecting to QBittorrent WebAPI.")
+            notification.setInformativeText("Make sure QBittorrent is running and its Web UI is enabled.")
+            # notification.setDetailedText("Response Code: " + str(response_code))
+            notification.setStandardButtons(QMessageBox.Ok)
+            notification.setDefaultButton(QMessageBox.Ok)
+            notification.setIcon(QMessageBox.Critical)
+            notification.exec_()
+        else:
+            self.waiting.succeed_waiting_condition(self.qbt_status_display)
+
+    @Slot()
+    @Slot(int, str)
+    def notify_tvdb_auth_response(self, response_code=None, details=None):
+        self.tvdb_handler.auth_finished.disconnect(self.notify_tvdb_auth_response)
+        if response_code != 0:
+            self.waiting.fail_waiting_condition(self.tvdb_status_display)
+            self.tvdb_handler = None
+            notification = QMessageBox()
+            notification.setText("Failed to authenticate with TheTVDB.com.")
+            if response_code is not None and details is not None:
+                notification.setDetailedText("Response Code: " + str(response_code) + "\n\n" + details)
+            notification.setInformativeText("Renaming won't be available.")
+            notification.setStandardButtons(QMessageBox.Ok)
+            notification.setDefaultButton(QMessageBox.Ok)
+            notification.setIcon(QMessageBox.Critical)
+            notification.exec_()
+        else:
+            self.waiting.succeed_waiting_condition(self.tvdb_status_display)
+
+    def is_authenticated(self):
+        return self.tvdb_handler and self.qbt_handler
 
     def run(self):
         self.series_data_handler.read()
@@ -303,16 +350,18 @@ class FileFetcher(QThread):
     def action_rename_scan(self):
         # check all files by regex in our series data
         for torrent_info in self.torrents:
+            qa2_util.debug("Files:", [x.filename for x in torrent_info.files], level=2)
             irrelevant = True
-            rename_whole_batch = False
             for file_info in torrent_info.files:
                 if file_info.priority == 0:  # skip ignored files
                     continue
+                qa2_util.debug("Checking filename:", file_info.filename, level=2)
                 for tvdb_id, data in self.series_data_handler.series_data.items():
                     for season, patterns in data.items():
                         for patternA, patternB in patterns.items():
                             pattern = re.compile(patternA)
                             if pattern.match(file_info.filename):
+                                qa2_util.debug("Matched:", file_info.filename, level=2)
                                 file_info.filename_new = self.pattern_wizard(tvdb_id, season, patternA, patternB, file_info.filename)
                                 irrelevant = False
             if not irrelevant:

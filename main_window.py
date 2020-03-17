@@ -13,6 +13,7 @@ from dialog.SeriesDataEditor import PatternSelector
 from dialog.SeriesSelection import SeriesSelection
 from dialog.PatternEditor import PatternEditor
 from dialog.RegexBuilder import RegexBuilder
+from dialog.QWaitingDialog import QWaitingDialog
 from qAnime2 import RenameWorker, FileFetcher
 from structure.torrent import Torrent
 from ui.ui_boolean_dialog import Ui_bool_dialog
@@ -49,7 +50,40 @@ class MainWindow(QMainWindow):
         self.ui = Ui_MainWindow()
         self.ui.setupUi(self)
 
+        # load settings and shit
         self.startup()
+
+        # TODO use "Promote Widget" in Qt Designer instead
+        # Ugly workaround. Python doesn't allow casting the Qt Designer's QTreeWidget to QTorrentTreeWidget, so we have to rebuild it.
+        old_tree_torrents = self.ui.tree_torrents
+        self.ui.tree_torrents = QTorrentTreeWidget(self.ui.central_widget)
+        self.ui.vlayout_table.replaceWidget(old_tree_torrents, self.ui.tree_torrents)
+        old_tree_torrents.deleteLater()
+        self.ui.tree_torrents.setColumnCount(3)
+        header = QTreeWidgetItem()
+        header.setText(0, "Old Name")
+        header.setText(1, "New Name")
+        header.setText(2, "")
+        self.ui.tree_torrents.setHeaderItem(header)
+        self.ui.tree_torrents.setColumnCount(3)
+        self.ui.tree_torrents.header().setStretchLastSection(False)
+        self.ui.tree_torrents.header().setSectionResizeMode(0, QHeaderView.Stretch)
+        self.ui.tree_torrents.header().setSectionResizeMode(1, QHeaderView.Stretch)
+        self.ui.tree_torrents.header().setSectionResizeMode(2, QHeaderView.ResizeToContents)
+        self.ui.tree_torrents.header().setDefaultAlignment(Qt.AlignCenter)
+
+        # progress bar
+        self.progress_bar = QProgressBar(self.ui.statusbar)
+        self.progress_bar.setAlignment(Qt.AlignRight)
+        self.progress_bar.setMaximumSize(180, 19)
+        self.ui.statusbar.addPermanentWidget(self.progress_bar)
+
+        # buttons
+        self.ui.button_scan.clicked.connect(self.rename_scan)
+        self.ui.button_add.clicked.connect(self.open_series_selection)
+        self.ui.button_edit.clicked.connect(self.open_pattern_selector)
+        self.ui.button_confirm_rename.clicked.connect(self.rename_confirm)
+        self.ui.button_confirm_rename.setEnabled(False)
 
         # series data json read/write
         self.series_data_handler = SeriesDataHandler()
@@ -57,11 +91,13 @@ class MainWindow(QMainWindow):
 
         # QThread
         self.file_fetcher = FileFetcher(self.settings)
-        self.file_fetcher.qbt_handler.init_progress.connect(self.set_progress_bar)
-        self.file_fetcher.qbt_handler.update_progress.connect(self.set_progress_bar)
-        self.file_fetcher.signals.rename_scan_result.connect(self.append_rename_data)
-        self.file_fetcher.signals.rename_scan_finished.connect(self.enable_button_confirm_rename)
-
+        if self.file_fetcher.is_authenticated():
+            self.file_fetcher.qbt_handler.init_progress.connect(self.set_progress_bar)
+            self.file_fetcher.qbt_handler.update_progress.connect(self.set_progress_bar)
+            self.file_fetcher.signals.rename_scan_result.connect(self.append_rename_data)
+            self.file_fetcher.signals.rename_scan_finished.connect(self.enable_button_confirm_rename)
+        else:
+            self.ui.button_scan.setEnabled(False)
         # QThread
         self.rename_worker = RenameWorker(self.settings)
         self.rename_worker.signals.rename_finished.connect(self.rename_finished)
@@ -76,36 +112,7 @@ class MainWindow(QMainWindow):
         self.patternSelector = PatternSelector(self.settings)
         # self.patternSelector.accepted.connect(self.)
 
-        # TODO use "Promote Widget" in Qt Designer instead
-        # Ugly workaround. Python doesn't allow casting the Qt Designer's QTreeWidget to QTorrentTreeWidget, so we have to rebuild it.
-        old_tree_torrents = self.ui.tree_torrents
-        self.ui.tree_torrents = QTorrentTreeWidget(self.ui.central_widget)
-        self.ui.vlayout_table.replaceWidget(old_tree_torrents, self.ui.tree_torrents)
-        old_tree_torrents.deleteLater()
-
-        self.ui.tree_torrents.setColumnCount(3)
-        header = QTreeWidgetItem()
-        header.setText(0, "Old Name")
-        header.setText(1, "New Name")
-        header.setText(2, "")
-        self.ui.tree_torrents.setHeaderItem(header)
-        self.ui.tree_torrents.setColumnCount(3)
-        self.ui.tree_torrents.header().setStretchLastSection(False)
-        self.ui.tree_torrents.header().setSectionResizeMode(0, QHeaderView.Stretch)
-        self.ui.tree_torrents.header().setSectionResizeMode(1, QHeaderView.Stretch)
-        self.ui.tree_torrents.header().setSectionResizeMode(2, QHeaderView.ResizeToContents)
-        self.ui.tree_torrents.header().setDefaultAlignment(Qt.AlignCenter)
-
-        self.progress_bar = QProgressBar(self.ui.statusbar)
-        self.progress_bar.setAlignment(Qt.AlignRight)
-        self.progress_bar.setMaximumSize(180, 19)
-        self.ui.statusbar.addPermanentWidget(self.progress_bar)
-        self.ui.button_scan.clicked.connect(self.rename_scan)
-        self.ui.button_add.clicked.connect(self.open_series_selection)
-        self.ui.button_edit.clicked.connect(self.open_pattern_selector)
-        self.ui.button_confirm_rename.clicked.connect(self.rename_confirm)
-        self.ui.button_confirm_rename.setEnabled(False)
-
+        # TODO why is this here?
         self.settings = {}
 
     @Slot(int)
