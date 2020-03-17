@@ -39,6 +39,7 @@ class SeriesSelection(QDialog):
 
     @Slot(list)
     def list_search_results(self, results:list):
+        self.ui.table_search_results.setRowCount(0)
         print(results)
         self.ui.table_search_results.setEnabled(True)
         row = self.ui.table_search_results.rowCount()

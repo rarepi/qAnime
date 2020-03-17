@@ -91,6 +91,7 @@ class PatternSelector(QDialog):
         self.ui.tree_patterns.clear()
         self.series_data_handler.read()
         self.tvdb_handler = TVDBHandler(self.settings)
+        self.tvdb_handler.auth()    # TODO
         for tvdb_id, data in self.series_data_handler.series_data.items():
             item_tvdb_id = create_tvdb_id_item(tvdb_id, self.tvdb_handler.get_series_name(tvdb_id))
             for season, patterns in data.items():

@@ -20,6 +20,6 @@ class QLineTextEdit(QTextEdit):
             return  # plain text only
 
         plain_source = QMimeData()
-        plain_source.setText(''.join(source.text().split()))    # removes any kind of whitespace
+        plain_source.setText(' '.join(source.text().split()))    # removes any kind of whitespace
 
         super(QLineTextEdit, self).insertFromMimeData(plain_source)
