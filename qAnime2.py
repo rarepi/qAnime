@@ -5,7 +5,7 @@ import subprocess
 
 import psutil
 from PySide2.QtCore import QThread, Signal, QObject, QEventLoop, Slot
-from PySide2.QtWidgets import QMessageBox
+from PySide2.QtWidgets import QMessageBox, QApplication
 
 import qa2_util
 from QTorrentWidgets import QTorrentTreeWidget
@@ -149,6 +149,14 @@ class Fastresume:
             return None, None    # TODO ERROR
 
 
+class RenameWorkerSignals(QObject):
+    rename_finished = Signal()
+    track_progress_text = Signal(str)
+    track_progress_update = Signal(int)
+    track_progress_range = Signal(int, int)
+    track_progress_start = Signal()
+
+
 class RenameWorker(QThread):
     def __init__(self, settings, parent=None):
         super().__init__()
@@ -182,8 +190,14 @@ class RenameWorker(QThread):
             else:
                 print("No running QBittorrent process found. Assuming it has been terminated.")
 
-            for i in range(self.torrent_tree.topLevelItemCount()):
-                torrent_widget = self.torrent_tree.topLevelItem(i)
+            progress_maximum = self.torrent_tree.topLevelItemCount()
+            progress_interval = int(progress_maximum / 100) if progress_maximum >= 100 else 1
+            self.signals.track_progress_text.emit("Renaming...")
+            self.signals.track_progress_range.emit(0, progress_maximum)
+            self.signals.track_progress_start.emit()
+
+            for progress_index in range(progress_maximum):
+                torrent_widget = self.torrent_tree.topLevelItem(progress_index)
 
                 fastresume_file = os.path.expandvars("%LOCALAPPDATA%/qBittorrent/BT_backup/") + torrent_widget.torrent.hash + ".fastresume"
                 with open(fastresume_file, 'rb') as f:
@@ -246,6 +260,8 @@ class RenameWorker(QThread):
                             print(e.strerror)
                             print("Rename revert failed. Fix it yourself! ¯\\_(ツ)_/¯")
                             break
+                if progress_index % progress_interval == 0 or progress_index >= progress_maximum:
+                    self.signals.track_progress_update.emit(progress_index)
             print("Restarting QBittorrent...")
             subprocess.Popen(self.settings["qbt_client"], close_fds=True, creationflags=subprocess.DETACHED_PROCESS)
             print("Restarted!")
@@ -254,14 +270,13 @@ class RenameWorker(QThread):
         self.signals.rename_finished.emit()
 
 
-class RenameWorkerSignals(QObject):
-    rename_finished = Signal()
-
-
 class FileFetcherSignals(QObject):
+    track_progress_text = Signal(str)
+    track_progress_update = Signal(int)
+    track_progress_range = Signal(int, int)
+    track_progress_start = Signal()
     rename_scan_result = Signal(Torrent)
     rename_scan_finished = Signal()
-
 
 class FileFetcher(QThread):
     def __init__(self, settings, parent=None):
@@ -349,6 +364,12 @@ class FileFetcher(QThread):
 
     def action_rename_scan(self):
         # check all files by regex in our series data
+        progress_index = 0
+        progress_maximum = len(self.torrents)
+        progress_interval = int(progress_maximum / 100) if progress_maximum >= 100 else 1
+        self.signals.track_progress_text.emit("Scanning for matching regex patterns...")
+        self.signals.track_progress_range.emit(progress_index, progress_maximum)   # should still be set correctly at this point so this seems unnecessary, just being save
+        self.signals.track_progress_start.emit()
         for torrent_info in self.torrents:
             qa2_util.debug("Files:", [x.filename for x in torrent_info.files], level=2)
             irrelevant = True
@@ -366,6 +387,9 @@ class FileFetcher(QThread):
                                 irrelevant = False
             if not irrelevant:
                 self.signals.rename_scan_result.emit(torrent_info)
+            progress_index += 1
+            if progress_index % progress_interval == 0 or progress_index >= progress_maximum:
+                self.signals.track_progress_update.emit(progress_index)
         self.signals.rename_scan_finished.emit()
         return
 

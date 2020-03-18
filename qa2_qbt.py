@@ -1,6 +1,8 @@
 import json
 import requests
 from PySide2.QtCore import Signal, QObject
+
+import qa2_util
 from structure.torrent import Torrent
 
 
@@ -18,8 +20,10 @@ def clean_filename(filename):
 
 
 class QBTHandler(QObject):
-    update_progress = Signal(int)
-    init_progress = Signal(int, int)
+    track_progress_text = Signal(str)
+    track_progress_update = Signal(int)
+    track_progress_range = Signal(int, int)
+    track_progress_start = Signal()
     auth_finished = Signal(int)
 
     def __init__(self, settings):
@@ -49,16 +53,21 @@ class QBTHandler(QObject):
         torrents = []
         try:
             json_data = result.json()
-            index = 0
-            self.init_progress.emit(index, len(json_data))
-            while index < len(json_data):
-                if json_data[index]['progress'] == 1.0:
-                    torrent = Torrent(json_data[index]['name'], json_data[index]['hash'])
+            progress_index = 0
+            progress_maximum = len(json_data)
+            progress_interval = int(progress_maximum / 100) if progress_maximum >= 100 else 1
+            self.track_progress_text.emit("Fetching torrents from QBittorrent...")
+            self.track_progress_range.emit(progress_index, progress_maximum)
+            self.track_progress_start.emit()
+            while progress_index < progress_maximum:
+                if json_data[progress_index]['progress'] == 1.0:
+                    torrent = Torrent(json_data[progress_index]['name'], json_data[progress_index]['hash'])
                     torrent.fetchFiles(self.settings["qbt_url"], self.cookie)
                     torrents.append(torrent)
-                index += 1
-                self.update_progress.emit(index)
-            print('\nFetching done.')
+                progress_index += 1
+                if progress_index % progress_interval == 0 or progress_index >= progress_maximum:
+                    self.track_progress_update.emit(progress_index)
+            qa2_util.debug("\nFetching done.", level=1)
         except json.decoder.JSONDecodeError:
             print("ERROR: QBittorrent returned an invalid torrent list.")
             print("Cookies:", self.cookie.cookies)

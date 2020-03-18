@@ -4,7 +4,7 @@ import sys
 
 from PySide2.QtCore import Qt, Slot
 from PySide2.QtWidgets import QApplication, QMainWindow, QProgressBar, QDialog, QHeaderView, \
-    QTreeWidgetItem
+    QTreeWidgetItem, QProgressDialog
 
 import qAnime2
 from QTorrentWidgets import QTorrentTreeWidget
@@ -20,12 +20,9 @@ from ui.ui_boolean_dialog import Ui_bool_dialog
 from ui.ui_main_window import Ui_MainWindow
 from ui.ui_setup_dialog import Ui_setup_dialog
 
-# TODO:
-# same patternA may not be in two seasons
-
 SETTINGS_FILE = "./settings.json"
 
-QBT_VERSION = "v4.2.1"
+QBT_VERSION = "v4.2.1"  # TODO check for this
 TVDB_CACHE_FILE = "./cache.json"
 os.makedirs(os.path.dirname(SETTINGS_FILE), exist_ok=True)
 
@@ -72,12 +69,6 @@ class MainWindow(QMainWindow):
         self.ui.tree_torrents.header().setSectionResizeMode(2, QHeaderView.ResizeToContents)
         self.ui.tree_torrents.header().setDefaultAlignment(Qt.AlignCenter)
 
-        # progress bar
-        self.progress_bar = QProgressBar(self.ui.statusbar)
-        self.progress_bar.setAlignment(Qt.AlignRight)
-        self.progress_bar.setMaximumSize(180, 19)
-        self.ui.statusbar.addPermanentWidget(self.progress_bar)
-
         # buttons
         self.ui.button_scan.clicked.connect(self.rename_scan)
         self.ui.button_add.clicked.connect(self.open_series_selection)
@@ -89,17 +80,31 @@ class MainWindow(QMainWindow):
         self.series_data_handler = SeriesDataHandler()
         self.series_data_handler.read()
 
+        self.progress_dialog = QProgressDialog(self)
+        self.progress_dialog.reset()
+        self.progress_dialog.setCancelButton(None)
+
         # QThread
         self.file_fetcher = FileFetcher(self.settings)
         if self.file_fetcher.is_authenticated():
-            self.file_fetcher.qbt_handler.init_progress.connect(self.set_progress_bar)
-            self.file_fetcher.qbt_handler.update_progress.connect(self.set_progress_bar)
+            self.file_fetcher.qbt_handler.track_progress_text.connect(self.progress_dialog.setLabelText)
+            self.file_fetcher.qbt_handler.track_progress_range.connect(self.progress_dialog.setRange)
+            self.file_fetcher.qbt_handler.track_progress_update.connect(self.progress_dialog.setValue)
+            self.file_fetcher.qbt_handler.track_progress_start.connect(self.progress_dialog.open)
+            self.file_fetcher.signals.track_progress_text.connect(self.progress_dialog.setLabelText)
+            self.file_fetcher.signals.track_progress_range.connect(self.progress_dialog.setRange)
+            self.file_fetcher.signals.track_progress_update.connect(self.progress_dialog.setValue)
+            self.file_fetcher.signals.track_progress_start.connect(self.progress_dialog.open)
             self.file_fetcher.signals.rename_scan_result.connect(self.append_rename_data)
             self.file_fetcher.signals.rename_scan_finished.connect(self.enable_button_confirm_rename)
         else:
             self.ui.button_scan.setEnabled(False)
         # QThread
         self.rename_worker = RenameWorker(self.settings)
+        self.rename_worker.signals.track_progress_text.connect(self.progress_dialog.setLabelText)
+        self.rename_worker.signals.track_progress_range.connect(self.progress_dialog.setRange)
+        self.rename_worker.signals.track_progress_update.connect(self.progress_dialog.setValue)
+        self.rename_worker.signals.track_progress_start.connect(self.progress_dialog.open)
         self.rename_worker.signals.rename_finished.connect(self.rename_finished)
 
         # dialogs
@@ -110,18 +115,9 @@ class MainWindow(QMainWindow):
         self.PatternEditor = PatternEditor()
         self.PatternEditor.accepted.connect(self.finalize_pattern_data)
         self.patternSelector = PatternSelector(self.settings)
-        # self.patternSelector.accepted.connect(self.)
 
         # TODO why is this here?
         self.settings = {}
-
-    @Slot(int)
-    @Slot(int, int)
-    def set_progress_bar(self, progress, maximum=None):
-        if isinstance(maximum, int):
-            self.progress_bar.setMaximum(maximum)
-        if isinstance(progress, int):
-            self.progress_bar.setValue(progress)
 
     @Slot(Torrent)
     def append_rename_data(self, torrent):
