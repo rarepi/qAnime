@@ -16,10 +16,6 @@ from qa2_tvdb import TVDBHandler
 from structure.torrent import Torrent
 
 
-SETTINGS_FILE = "./settings.json"
-os.makedirs(os.path.dirname(SETTINGS_FILE), exist_ok=True)
-
-
 def pattern_replace(pattern, old, new, fill=False):
     idx = pattern.find(old)
     if idx >= 0:
@@ -149,26 +145,22 @@ class Fastresume:
             return None, None    # TODO ERROR
 
 
-class RenameWorkerSignals(QObject):
+class RenameWorker(QObject):
     rename_finished = Signal()
     track_progress_text = Signal(str)
     track_progress_update = Signal(int)
     track_progress_range = Signal(int, int)
     track_progress_start = Signal()
 
-
-class RenameWorker(QThread):
-    def __init__(self, settings, parent=None):
-        super().__init__()
+    def __init__(self, settings):
+        super(RenameWorker, self).__init__()
         self.settings = settings
-        self.torrent_tree = None
-        self.signals = RenameWorkerSignals()
 
-    def run(self):
+    def rename(self, torrent_tree:QTorrentTreeWidget):
         """
         Renames a QTorrentTreeWidget's torrents and their files and manipulates the QBittorrent fastresume file accordingly.
         """
-        if not isinstance(self.torrent_tree, QTorrentTreeWidget):
+        if not isinstance(torrent_tree, QTorrentTreeWidget):
             return  # TODO ERROR
         else:
             process = None
@@ -190,14 +182,14 @@ class RenameWorker(QThread):
             else:
                 print("No running QBittorrent process found. Assuming it has been terminated.")
 
-            progress_maximum = self.torrent_tree.topLevelItemCount()
+            progress_maximum = torrent_tree.topLevelItemCount()
             progress_interval = int(progress_maximum / 100) if progress_maximum >= 100 else 1
-            self.signals.track_progress_text.emit("Renaming...")
-            self.signals.track_progress_range.emit(0, progress_maximum)
-            self.signals.track_progress_start.emit()
+            self.track_progress_text.emit("Renaming...")
+            self.track_progress_range.emit(0, progress_maximum)
+            self.track_progress_start.emit()
 
             for progress_index in range(progress_maximum):
-                torrent_widget = self.torrent_tree.topLevelItem(progress_index)
+                torrent_widget = torrent_tree.topLevelItem(progress_index)
 
                 fastresume_file = os.path.expandvars("%LOCALAPPDATA%/qBittorrent/BT_backup/") + torrent_widget.torrent.hash + ".fastresume"
                 with open(fastresume_file, 'rb') as f:
@@ -260,17 +252,17 @@ class RenameWorker(QThread):
                             print(e.strerror)
                             print("Rename revert failed. Fix it yourself! ¯\\_(ツ)_/¯")
                             break
-                if progress_index % progress_interval == 0 or progress_index >= progress_maximum:
-                    self.signals.track_progress_update.emit(progress_index)
+                if progress_index % progress_interval == 0 or progress_index+progress_interval >= progress_maximum:
+                    self.track_progress_update.emit(progress_index+progress_interval)
             print("Restarting QBittorrent...")
             subprocess.Popen(self.settings["qbt_client"], close_fds=True, creationflags=subprocess.DETACHED_PROCESS)
             print("Restarted!")
 
         # noinspection PyUnresolvedReferences
-        self.signals.rename_finished.emit()
+        self.rename_finished.emit()
 
 
-class FileFetcherSignals(QObject):
+class FileFetcher(QObject):
     track_progress_text = Signal(str)
     track_progress_update = Signal(int)
     track_progress_range = Signal(int, int)
@@ -278,10 +270,8 @@ class FileFetcherSignals(QObject):
     rename_scan_result = Signal(Torrent)
     rename_scan_finished = Signal()
 
-class FileFetcher(QThread):
-    def __init__(self, settings, parent=None):
-        QThread.__init__(self, parent)
-        self.signals = FileFetcherSignals()
+    def __init__(self, settings):
+        super(FileFetcher, self).__init__()
         self.settings = settings
         self.series_data = {}
         self.torrents = {}
@@ -355,21 +345,21 @@ class FileFetcher(QThread):
     def is_authenticated(self):
         return self.tvdb_handler and self.qbt_handler
 
-    def run(self):
+    def scan(self):
         self.series_data_handler.read()
         print(self.series_data_handler.series_data)
         self.torrents = self.qbt_handler.fetch_torrents()
         self.action_rename_scan()
-        self.exec_()    # start event handling
+        self.rename_scan_finished.emit()
 
     def action_rename_scan(self):
         # check all files by regex in our series data
         progress_index = 0
         progress_maximum = len(self.torrents)
         progress_interval = int(progress_maximum / 100) if progress_maximum >= 100 else 1
-        self.signals.track_progress_text.emit("Scanning for matching regex patterns...")
-        self.signals.track_progress_range.emit(progress_index, progress_maximum)   # should still be set correctly at this point so this seems unnecessary, just being save
-        self.signals.track_progress_start.emit()
+        self.track_progress_text.emit("Scanning for matching regex patterns...")
+        self.track_progress_range.emit(progress_index, progress_maximum)   # should still be set correctly at this point so this seems unnecessary, just being save
+        self.track_progress_start.emit()
         for torrent_info in self.torrents:
             qa2_util.debug("Files:", [x.filename for x in torrent_info.files], level=2)
             irrelevant = True
@@ -386,11 +376,10 @@ class FileFetcher(QThread):
                                 file_info.filename_new = self.pattern_wizard(tvdb_id, season, patternA, patternB, file_info.filename)
                                 irrelevant = False
             if not irrelevant:
-                self.signals.rename_scan_result.emit(torrent_info)
+                self.rename_scan_result.emit(torrent_info)
             progress_index += 1
             if progress_index % progress_interval == 0 or progress_index >= progress_maximum:
-                self.signals.track_progress_update.emit(progress_index)
-        self.signals.rename_scan_finished.emit()
+                self.track_progress_update.emit(progress_index)
         return
 
     def pattern_wizard(self, tvdb_id, season, pattern_a, pattern_b, filename):

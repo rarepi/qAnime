@@ -2,7 +2,7 @@ import json
 import os
 import sys
 
-from PySide2.QtCore import Qt, Slot
+from PySide2.QtCore import Qt, Slot, QThread
 from PySide2.QtWidgets import QApplication, QMainWindow, QProgressBar, QDialog, QHeaderView, \
     QTreeWidgetItem, QProgressDialog
 
@@ -86,26 +86,28 @@ class MainWindow(QMainWindow):
 
         # QThread
         self.file_fetcher = FileFetcher(self.settings)
+        self.thread_rename_scan = QThread()
         if self.file_fetcher.is_authenticated():
             self.file_fetcher.qbt_handler.track_progress_text.connect(self.progress_dialog.setLabelText)
             self.file_fetcher.qbt_handler.track_progress_range.connect(self.progress_dialog.setRange)
             self.file_fetcher.qbt_handler.track_progress_update.connect(self.progress_dialog.setValue)
             self.file_fetcher.qbt_handler.track_progress_start.connect(self.progress_dialog.open)
-            self.file_fetcher.signals.track_progress_text.connect(self.progress_dialog.setLabelText)
-            self.file_fetcher.signals.track_progress_range.connect(self.progress_dialog.setRange)
-            self.file_fetcher.signals.track_progress_update.connect(self.progress_dialog.setValue)
-            self.file_fetcher.signals.track_progress_start.connect(self.progress_dialog.open)
-            self.file_fetcher.signals.rename_scan_result.connect(self.append_rename_data)
-            self.file_fetcher.signals.rename_scan_finished.connect(self.enable_button_confirm_rename)
+            self.file_fetcher.track_progress_text.connect(self.progress_dialog.setLabelText)
+            self.file_fetcher.track_progress_range.connect(self.progress_dialog.setRange)
+            self.file_fetcher.track_progress_update.connect(self.progress_dialog.setValue)
+            self.file_fetcher.track_progress_start.connect(self.progress_dialog.open)
+            self.file_fetcher.rename_scan_result.connect(self.append_rename_data)
+            self.file_fetcher.rename_scan_finished.connect(self.enable_button_confirm_rename)
         else:
             self.ui.button_scan.setEnabled(False)
         # QThread
         self.rename_worker = RenameWorker(self.settings)
-        self.rename_worker.signals.track_progress_text.connect(self.progress_dialog.setLabelText)
-        self.rename_worker.signals.track_progress_range.connect(self.progress_dialog.setRange)
-        self.rename_worker.signals.track_progress_update.connect(self.progress_dialog.setValue)
-        self.rename_worker.signals.track_progress_start.connect(self.progress_dialog.open)
-        self.rename_worker.signals.rename_finished.connect(self.rename_finished)
+        self.thread_rename = QThread()
+        self.rename_worker.track_progress_text.connect(self.progress_dialog.setLabelText)
+        self.rename_worker.track_progress_range.connect(self.progress_dialog.setRange)
+        self.rename_worker.track_progress_update.connect(self.progress_dialog.setValue)
+        self.rename_worker.track_progress_start.connect(self.progress_dialog.open)
+        self.rename_worker.rename_finished.connect(self.rename_finished)
 
         # dialogs
         self.series_selection = SeriesSelection(self.settings)
@@ -129,13 +131,18 @@ class MainWindow(QMainWindow):
             self.ui.button_confirm_rename.setEnabled(True)
 
     def rename_scan(self):
-        self.file_fetcher.start()
+        self.file_fetcher.moveToThread(self.thread_rename_scan)
+        self.thread_rename_scan.started.connect(self.file_fetcher.scan)
+        self.file_fetcher.rename_scan_finished.connect(self.thread_rename_scan.quit)
+        self.thread_rename_scan.start()
 
     def rename_confirm(self):
         self.ui.button_confirm_rename.setEnabled(False)
         self.ui.tree_torrents.setEnabled(False)
-        self.rename_worker.torrent_tree = self.ui.tree_torrents
-        self.rename_worker.start()
+        self.file_fetcher.moveToThread(self.thread_rename)
+        self.thread_rename.started.connect(lambda x: self.rename_worker.rename(self.ui.tree_torrents))
+        self.file_fetcher.rename_scan_finished.connect(self.thread_rename.quit)
+        self.thread_rename.start()
 
     @Slot()
     def open_series_selection(self):
