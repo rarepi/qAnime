@@ -1,6 +1,7 @@
 import os
 import re  # regex
 import subprocess
+from enum import IntEnum
 
 import psutil
 from PySide2.QtCore import QThread, Signal, QObject, QEventLoop, Slot
@@ -134,6 +135,12 @@ class RenameWorker(QObject):
 
 
 class FileFetcher(QObject):
+    wait_for = Signal(int, str)
+    failed = Signal(int)
+    succeeded = Signal(int)
+    authenticating = Signal()
+    auth_done = Signal()
+
     track_progress_text = Signal(str)
     track_progress_update = Signal(int)
     track_progress_range = Signal(int, int)
@@ -141,82 +148,117 @@ class FileFetcher(QObject):
     rename_scan_result = Signal(Torrent)
     rename_scan_finished = Signal()
 
+    class Condition(IntEnum):
+        QBT_AUTH = 0
+        TVDB_AUTH = 1
+
     def __init__(self, settings):
         super(FileFetcher, self).__init__()
         self.settings = settings
         self.series_data = {}
         self.torrents = {}
-
-        self.loop = QEventLoop()
-        self.waiting = QWaitingDialog()
-        self.waiting.accepted.connect(self.loop.quit)
-
-        thread_qbt_auth = QThread()
-        self.qbt_handler = QBTHandler(self.settings)
-        self.qbt_handler.moveToThread(thread_qbt_auth)
-        thread_qbt_auth.started.connect(self.qbt_handler.auth)
-        self.qbt_handler.auth_finished.connect(self.notify_qbt_auth_response)
-        self.qbt_handler.auth_finished.connect(thread_qbt_auth.quit)
-
-        thread_tvdb_auth = QThread()
-        self.tvdb_handler = TVDBHandler(self.settings)
-        self.tvdb_handler.moveToThread(thread_tvdb_auth)
-        thread_tvdb_auth.started.connect(self.tvdb_handler.auth)
-        self.tvdb_handler.auth_finished.connect(self.notify_tvdb_auth_response)
-        self.tvdb_handler.auth_finished.connect(thread_tvdb_auth.quit)
-
-        self.qbt_status_display = self.waiting.add_waiting_condition("Connecting to QBittorrent WebUI.")
-        self.tvdb_status_display = self.waiting.add_waiting_condition("Connecting to TVDB.")
-
-        thread_tvdb_auth.start()
-        thread_qbt_auth.start()
-
         self.series_data_handler = SeriesDataHandler()
-        self.waiting.show()
-        if thread_qbt_auth.isRunning() or thread_tvdb_auth.isRunning():
-            self.loop.exec_()
+
+        self.auth_state = 0
+        self.loop = QEventLoop()
+        self.auth_done.connect(self.loop.quit)
+        self.thread_tvdb_auth = QThread()
+        self.thread_qbt_auth = QThread()
+        self.qbt_handler = QBTHandler(self.settings)
+        self.qbt_handler.moveToThread(self.thread_qbt_auth)
+        self.thread_qbt_auth.started.connect(self.qbt_handler.auth)
+        self.qbt_handler.auth_success.connect(self.qbt_authentication_success)
+        self.qbt_handler.auth_failure.connect(self.qbt_authentication_failure)
+        self.qbt_handler.auth_success.connect(self.thread_qbt_auth.quit)
+        self.qbt_handler.auth_failure.connect(self.thread_qbt_auth.quit)
+
+        self.tvdb_handler = TVDBHandler(self.settings)
+        self.tvdb_handler.moveToThread(self.thread_tvdb_auth)
+        self.thread_tvdb_auth.started.connect(self.tvdb_handler.auth)
+        self.tvdb_handler.auth_success.connect(self.tvdb_authentication_success)
+        self.tvdb_handler.auth_failure.connect(self.tvdb_authentication_failure)
+        self.tvdb_handler.auth_success.connect(self.thread_tvdb_auth.quit)
+        self.tvdb_handler.auth_failure.connect(self.thread_tvdb_auth.quit)
 
     @Slot()
-    @Slot(int)
-    def notify_qbt_auth_response(self, response_code=None):
-        self.qbt_handler.auth_finished.disconnect(self.notify_qbt_auth_response)
-        if response_code != 0:
-            self.waiting.fail_waiting_condition(self.qbt_status_display)
-            self.qbt_handler = None
-            notification = QMessageBox()
-            notification.setText("Failed connecting to QBittorrent WebAPI.")
-            notification.setInformativeText("Make sure QBittorrent is running and its Web UI is enabled.")
-            # notification.setDetailedText("Response Code: " + str(response_code))
-            notification.setStandardButtons(QMessageBox.Ok)
-            notification.setDefaultButton(QMessageBox.Ok)
-            notification.setIcon(QMessageBox.Critical)
-            notification.exec_()
-        else:
-            self.waiting.succeed_waiting_condition(self.qbt_status_display)
+    def qbt_authentication_success(self):
+        print("qbt_authentication_success")
+        self.succeeded.emit(self.Condition.QBT_AUTH)
+        self.auth_state += 1
+        if not (self.thread_qbt_auth.isRunning() or self.thread_tvdb_auth.isRunning()):
+            print("auth finished by qbt_authentication_success")
+            self.auth_done.emit()
 
     @Slot()
+    def qbt_authentication_failure(self):
+        # self.qbt_handler.auth_finished.disconnect(self.notify_qbt_auth_response)
+        print("qbt_authentication_failure")
+        self.failed.emit(self.Condition.QBT_AUTH)
+        self.qbt_handler = None
+        notification = QMessageBox()
+        notification.setText("Failed connecting to QBittorrent WebAPI.")
+        notification.setInformativeText("Make sure QBittorrent is running and its Web UI is enabled.")
+        notification.setStandardButtons(QMessageBox.Ok)
+        notification.setDefaultButton(QMessageBox.Ok)
+        notification.setIcon(QMessageBox.Critical)
+        notification.exec_()
+        if not (self.thread_qbt_auth.isRunning() or self.thread_tvdb_auth.isRunning()):
+            self.auth_done.emit()
+
+    @Slot()
+    def tvdb_authentication_success(self):
+        print("tvdb_authentication_success")
+        self.succeeded.emit(self.Condition.TVDB_AUTH)
+        self.auth_state += 1
+        if not (self.thread_qbt_auth.isRunning() or self.thread_tvdb_auth.isRunning()):
+            print("auth finished by tvdb_authentication_success")
+            self.auth_done.emit()
+
     @Slot(int, str)
-    def notify_tvdb_auth_response(self, response_code=None, details=None):
-        self.tvdb_handler.auth_finished.disconnect(self.notify_tvdb_auth_response)
-        if response_code != 0:
-            self.waiting.fail_waiting_condition(self.tvdb_status_display)
-            self.tvdb_handler = None
-            notification = QMessageBox()
-            notification.setText("Failed to authenticate with TheTVDB.com.")
-            if response_code is not None and details is not None:
-                notification.setDetailedText("Response Code: " + str(response_code) + "\n\n" + details)
-            notification.setInformativeText("Renaming won't be available.")
-            notification.setStandardButtons(QMessageBox.Ok)
-            notification.setDefaultButton(QMessageBox.Ok)
-            notification.setIcon(QMessageBox.Critical)
-            notification.exec_()
-        else:
-            self.waiting.succeed_waiting_condition(self.tvdb_status_display)
+    def tvdb_authentication_failure(self, response_code=None, details=None):
+        # self.tvdb_handler.auth_finished.disconnect(self.notify_tvdb_auth_response)
+        print("tvdb_authentication_failure")
+        self.failed.emit(self.Condition.TVDB_AUTH)
+        self.tvdb_handler = None
+        notification = QMessageBox()
+        notification.setText("Failed to authenticate with TheTVDB.com.")
+        if response_code is not None and details is not None:
+            notification.setDetailedText("Response Code: " + str(response_code) + "\n\n" + details)
+        notification.setInformativeText("Renaming won't be available.")
+        notification.setStandardButtons(QMessageBox.Ok)
+        notification.setDefaultButton(QMessageBox.Ok)
+        notification.setIcon(QMessageBox.Critical)
+        notification.exec_()
+        if not (self.thread_qbt_auth.isRunning() or self.thread_tvdb_auth.isRunning()):
+            self.auth_done.emit()
 
     def is_authenticated(self):
-        return self.tvdb_handler and self.qbt_handler
+        return self.auth_state == len(self.Condition)
+
+    def auth(self):
+        if not self.is_authenticated():
+            self.wait_for.emit(self.Condition.QBT_AUTH, "Connecting to QBittorrent WebUI.")
+            self.wait_for.emit(self.Condition.TVDB_AUTH, "Connecting to TVDB.")
+            self.authenticating.emit()
+
+            self.thread_tvdb_auth.start()
+            self.thread_qbt_auth.start()
+
+            if self.thread_qbt_auth.isRunning() or self.thread_tvdb_auth.isRunning():
+                print("authing")
+                self.loop.exec_()
+            print("auth done")
+        return self.is_authenticated()
 
     def scan(self):
+        if not self.auth():
+            print("bruh")
+            return  # TODO ERROR
+        self.qbt_handler.track_progress_text.connect(self.track_progress_text)
+        self.qbt_handler.track_progress_range.connect(self.track_progress_range)
+        self.qbt_handler.track_progress_update.connect(self.track_progress_update)
+        self.qbt_handler.track_progress_start.connect(self.track_progress_start)
+
         self.series_data_handler.read()
         print(self.series_data_handler.series_data)
         self.torrents = self.qbt_handler.fetch_torrents()

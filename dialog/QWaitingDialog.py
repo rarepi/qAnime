@@ -32,17 +32,20 @@ class QWaitingDialog(QDialog):
 
         self.active_conditions = 0
 
-    def add_waiting_condition(self, msg:str) -> int:
+    @Slot(int, str)
+    def add_waiting_condition(self, index:int, msg:str):
         label = QLabel(msg)
         self.ui.container_messages.layout().addWidget(label)
-        index = len(self.ui.container_messages.children())
         label.setObjectName("label_" + str(index))
         self.active_conditions += 1
-        return index
+        print(index, msg)
 
     @Slot(int)
     def succeed_waiting_condition(self, index:int):
+        print(index)
         label = self.ui.container_messages.findChild(QLabel, "label_" + str(index))
+        if label is None:
+            return
         label.setText(label.text() + " - DONE")
         self.active_conditions -= 1
         self.finish()
@@ -54,6 +57,11 @@ class QWaitingDialog(QDialog):
         self.active_conditions -= 1
         self.finish()
 
+    def clear(self):
+        for child in self.ui.container_messages.findChildren(QLabel).reverse():
+            self.ui.container_messages.layout().removeWidget(child)
+
     def finish(self):
         if self.active_conditions <= 0:
+            # self.clear()
             self.accept()
