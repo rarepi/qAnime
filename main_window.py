@@ -140,7 +140,7 @@ class MainWindow(QMainWindow):
         self.ui.button_confirm_rename.setEnabled(False)
         self.ui.tree_torrents.setEnabled(False)
         self.file_fetcher.moveToThread(self.thread_rename)
-        self.thread_rename.started.connect(lambda x: self.rename_worker.rename(self.ui.tree_torrents))
+        self.thread_rename.started.connect(lambda: self.rename_worker.rename(self.ui.tree_torrents))
         self.file_fetcher.rename_scan_finished.connect(self.thread_rename.quit)
         self.thread_rename.start()
 
