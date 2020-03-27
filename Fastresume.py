@@ -78,6 +78,10 @@ class Fastresume:
             while chr(self.fastresume[idx]) != self.TAG_END:
                 # key
                 if not chr(self.fastresume[idx]).isdigit():
+                    # TODO This happened once when no debug message was implemented.
+                    #  Then it didn't ever happen again, even on the same torrent. No idea why.
+                    qa2_util.debug("Invalid Key detected, expected Integer:", chr(self.fastresume[idx]),
+                                   "\nFull Fastresume: ", self.fastresume, level=0)
                     return None, None  # TODO ERROR
                 idx_separator = self.fastresume.index(bytes(self.TAG_SEPARATOR, "ascii"), idx)
                 length = int(self.fastresume[idx:idx_separator])
