@@ -15,8 +15,7 @@ class TVDBEpisodeNumberNotInResult(Exception):
 
 
 class TVDBHandler(QObject):
-    auth_success = Signal()
-    auth_failure = Signal(int, str)
+    auth_finished = Signal(int, str)
     series_results_collected = Signal(list)
 
     def __init__(self, settings):
@@ -38,13 +37,12 @@ class TVDBHandler(QObject):
             print('TVDB Auth Response Status Code: ', result.status_code)
             print('TVDB Auth Response: ', result.text)
             try:
-                self.auth_failure.emit(int(result.status_code), result.text)
+                self.auth_finished.emit(int(result.status_code), result.text)
             except ValueError:
-                self.auth_failure.emit(-1, result.text)
+                self.auth_finished.emit(-1, result.text)
         else:
             self.token = result.json()['token']
-            self.auth_success.emit()
-            print(self.token)
+            self.auth_finished.emit(0, result.text)
 
     def get_series(self, name):
         head = {"Authorization": "Bearer " + self.token, "Accept-Language": "en", "content-type": "application/json"}

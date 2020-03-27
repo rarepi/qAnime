@@ -24,8 +24,7 @@ class QBTHandler(QObject):
     track_progress_update = Signal(int)
     track_progress_range = Signal(int, int)
     track_progress_start = Signal()
-    auth_success = Signal()
-    auth_failure = Signal()
+    auth_finished = Signal(int)
 
     def __init__(self, settings):
         super(QBTHandler, self).__init__()
@@ -37,11 +36,10 @@ class QBTHandler(QObject):
         auth = {'username': self.settings["qbt_username"], 'password': self.settings["qbt_password"]}
         try:
             self.cookie = requests.get(self.settings["qbt_url"] + '/auth/login', params=auth)
-            self.auth_success.emit()
-            print(self.cookie.cookies)
+            self.auth_finished.emit(0)
         except requests.exceptions.ConnectionError:
             print("Failed connecting to QBittorrent WebAPI. Make sure QBittorrent is running and its Web UI is enabled.")
-            self.auth_failure.emit()
+            self.auth_finished.emit(-1)
 
     def get_qbt_version(self):
         version = requests.get(self.settings["qbt_url"] + '/app/version', cookies=self.cookie.cookies)

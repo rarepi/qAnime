@@ -84,21 +84,23 @@ class MainWindow(QMainWindow):
         self.progress_dialog.reset()
         self.progress_dialog.setCancelButton(None)
 
-        self.waiting_dialog = QWaitingDialog()
-
+        # QThread
         self.file_fetcher = FileFetcher(self.settings)
         self.thread_rename_scan = QThread()
-        self.file_fetcher.wait_for.connect(self.waiting_dialog.add_waiting_condition)
-        self.file_fetcher.failed.connect(self.waiting_dialog.fail_waiting_condition)
-        self.file_fetcher.succeeded.connect(self.waiting_dialog.succeed_waiting_condition)
-        self.file_fetcher.authenticating.connect(self.waiting_dialog.show)
-        self.file_fetcher.track_progress_text.connect(self.progress_dialog.setLabelText)
-        self.file_fetcher.track_progress_range.connect(self.progress_dialog.setRange)
-        self.file_fetcher.track_progress_update.connect(self.progress_dialog.setValue)
-        self.file_fetcher.track_progress_start.connect(self.progress_dialog.open)
-        self.file_fetcher.rename_scan_result.connect(self.append_rename_data)
-        self.file_fetcher.rename_scan_finished.connect(self.enable_button_confirm_rename)
-
+        if self.file_fetcher.is_authenticated():
+            self.file_fetcher.qbt_handler.track_progress_text.connect(self.progress_dialog.setLabelText)
+            self.file_fetcher.qbt_handler.track_progress_range.connect(self.progress_dialog.setRange)
+            self.file_fetcher.qbt_handler.track_progress_update.connect(self.progress_dialog.setValue)
+            self.file_fetcher.qbt_handler.track_progress_start.connect(self.progress_dialog.open)
+            self.file_fetcher.track_progress_text.connect(self.progress_dialog.setLabelText)
+            self.file_fetcher.track_progress_range.connect(self.progress_dialog.setRange)
+            self.file_fetcher.track_progress_update.connect(self.progress_dialog.setValue)
+            self.file_fetcher.track_progress_start.connect(self.progress_dialog.open)
+            self.file_fetcher.rename_scan_result.connect(self.append_rename_data)
+            self.file_fetcher.rename_scan_finished.connect(self.enable_button_confirm_rename)
+        else:
+            self.ui.button_scan.setEnabled(False)
+        # QThread
         self.rename_worker = RenameWorker(self.settings)
         self.thread_rename = QThread()
         self.rename_worker.track_progress_text.connect(self.progress_dialog.setLabelText)
